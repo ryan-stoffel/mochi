@@ -1,7 +1,7 @@
 // Mochi: a pixel critter that lives on your desktop and keeps you company.
 // The window is a transparent, always-on-top panel hosting web/index.html. This file does the Mac parts:
 // sensors (idle timers, sleep/wake, which app you're in, calls, battery), the window and how it gets around
-// your screens (walking, hopping between windows, falling, being thrown), menus, and saving state.
+// your screens (walking, hopping between windows, falling, being thrown), the panel's actions, and saving state.
 import AppKit
 import CoreAudio
 import CoreMediaIO
@@ -119,6 +119,9 @@ private func distance(_ r: CGRect, _ p: CGPoint) -> CGFloat {
 final class PetPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+    // AppKit keeps a window's top edge under the menu bar. This window is much taller than Mochi, so that would stop
+    // Mochi well short of the top of the screen and sink it into windows near the top. Mochi keeps itself on screen.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
 }
 
 final class PetWebView: WKWebView {
@@ -130,7 +133,6 @@ final class PetWebView: WKWebView {
 final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavigationDelegate {
     var panel: PetPanel!
     var web: PetWebView!
-    var statusItem: NSStatusItem?
 
     // Mochi is drawn 46×34 "pixels", each `scale` points wide. The window adds room for a speech bubble above it
     // and, for when it's perched near the top of a screen, below it. Everything but Mochi and its bubble lets clicks through.
@@ -187,15 +189,13 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
     let defaults = UserDefaults.standard
     var roam: Bool { defaults.object(forKey: "roam") as? Bool ?? true }
     var appAware: Bool { defaults.object(forKey: "appAware") as? Bool ?? true }
-    var emoji: Bool { defaults.bool(forKey: "emoji") }   // off: pixel icons in the bubble, SF Symbols in the menus
+    var emoji: Bool { defaults.bool(forKey: "emoji") }   // off: pixel icons in the bubble
+    var waterReminders: Bool { defaults.object(forKey: "waterReminders") as? Bool ?? true }
     var followClaude: Bool { defaults.object(forKey: "followClaude") as? Bool ?? true }
     var narrateClaude: Bool { defaults.object(forKey: "narrateClaude") as? Bool ?? true }
     var checkUsage: Bool { defaults.object(forKey: "checkUsage") as? Bool ?? true }   // ask Claude Code for usage every 5 minutes
     lazy var claude = ClaudeCode(dataDir: dataDir)
     lazy var claudeLinked = claude.connected
-    enum BarMode: String { case usage, icon, hidden }
-    var barMode: BarMode { BarMode(rawValue: defaults.string(forKey: "menuBar") ?? "") ?? .usage }
-    var lastBadge = ""
     var lastClaude = ""
     var claudeState = ""
     var attentionAt = 0.0
@@ -221,11 +221,11 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         if roam { snapDown() }
         if let r = forcedRoam { roamLevel = r; nextRoam = CACurrentMediaTime() + 3; rlog("ledges:", ledges.map { "\($0.win):\(Int($0.x0))-\(Int($0.x1))@\(Int($0.y))" }) }
         buildPanel()
-        buildStatusItem()
+        sheet.refresh = { [weak self] in self?.panelState() ?? PanelState() }
+        sheet.model.act = { [weak self] in self?.perform($0) }
         observeSystem()
         claude.onChange = { [weak self] in
             self?.pushClaude()
-            self?.updateBadge()
             if self?.sheet.isOpen == true { self?.sheet.update() }
         }
         claude.start()
@@ -250,7 +250,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         }
         var env: [String: Any] = ["app": true, "boot": bootTime() * 1000, "launched": Date().timeIntervalSince1970 * 1000,
                                   "scale": scale, "w": size.width, "h": size.height, "below": App.below, "emoji": emoji,
-                                  "claude": followClaude, "narrate": narrateClaude]
+                                  "water": waterReminders, "claude": followClaude, "narrate": narrateClaude]
         if let speed = ProcessInfo.processInfo.environment["MOCHI_SPEED"], let v = Double(speed) { env["speed"] = v }
         if ProcessInfo.processInfo.environment["MOCHI_TRACE"] != nil { env["trace"] = true }
         let boot = "window.MOCHI_SAVED = \(saved); window.MOCHI_ENV = \(json(env));"
@@ -384,7 +384,6 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         if ticks % 2 == 0 { pushSys() }
         claude.prune()
         pushClaude()
-        if ticks % 30 == 0 { updateBadge() }   // a usage window may have reset
         if ticks % 300 == 0 && checkUsage { claude.checkUsage() }   // and every 5 minutes, fresh numbers
     }
 
@@ -412,7 +411,6 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         guard s != lastClaude else { return }
         lastClaude = s
         js("window.mochi && mochi.claude(\(s))")
-        updateBadge()
         let state = d["state"] as? String ?? ""
         // Claude needs you: come over to where your pointer is, so you notice
         if state == "waiting" && claudeState != "waiting" && followClaude && roam && motion == .still && panel.isVisible {
@@ -427,7 +425,6 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         do {
             try claude.connect(on)
             claudeLinked = on
-            updateBadge()
             if on { js("mochi.claudeConnected(true, '')") }
         } catch {
             NSLog("[mochi] claude: %@", error.localizedDescription)
@@ -845,62 +842,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         }
     }
 
-    // MARK: the menu bar and the panel
-
-    func buildStatusItem() {
-        if let statusItem { NSStatusBar.system.removeStatusItem(statusItem) }
-        statusItem = nil
-        lastBadge = ""
-        sheet.refresh = { [weak self] in self?.panelState() ?? PanelState() }
-        sheet.model.act = { [weak self] in self?.perform($0) }
-        guard barMode != .hidden else { return }
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.target = self
-        item.button?.action = #selector(statusClicked)
-        item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
-        statusItem = item
-        updateBadge()
-    }
-
-    /// Click: Mochi's panel. Right-click: just the essentials.
-    @objc func statusClicked() {
-        guard let e = NSApp.currentEvent, let button = statusItem?.button else { return }
-        if e.type == .rightMouseUp || e.modifierFlags.contains(.control) {
-            sheet.close()
-            let menu = NSMenu()
-            menu.addItem(item(panel.isVisible ? "Hide Mochi" : "Show Mochi", #selector(toggleVisible)))
-            menu.addItem(.separator())
-            menu.addItem(item("Quit Mochi", #selector(NSApplication.terminate(_:)), key: "q", target: NSApp))
-            statusItem?.menu = menu
-            button.performClick(nil)
-            statusItem?.menu = nil
-        } else if sheet.isOpen {
-            sheet.close()
-        } else {
-            sheet.show(under: button)
-            freshenUsage()
-        }
-    }
-
-    /// The menu bar shows your Claude usage once Claude Code is connected, and Mochi's icon otherwise.
-    func updateBadge() {
-        guard let button = statusItem?.button else { return }
-        let five = claude.current(claude.fiveHour)
-        let usage = barMode == .usage && (five != nil || claudeLinked)
-        let key = usage ? five.map { "\(Int($0.pct.rounded()))" } ?? "-" : "icon"
-        guard key != lastBadge else { return }
-        lastBadge = key
-        if !usage {
-            button.image = Self.menuIcon()
-            button.toolTip = "Mochi"
-        } else if let five {
-            button.image = UsageBadge.image("\(Int(five.pct.rounded()))%", dim: false)
-            button.toolTip = "Claude: \(Int(five.pct.rounded()))% of your 5-hour limit used" + (five.resets.map { ", resets \(UsageBadge.when($0))" } ?? "")
-        } else {
-            button.image = UsageBadge.image("C", dim: true)
-            button.toolTip = "Claude usage shows up here after your next Claude Code message"
-        }
-    }
+    // MARK: the panel
 
     /// Everything the panel shows, as of now.
     func panelState() -> PanelState {
@@ -912,9 +854,9 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         p.roam = roam
         p.appAware = appAware
         p.emoji = emoji
+        p.water = waterReminders
         p.login = SMAppService.mainApp.status == .enabled
         p.scale = Double(scale)
-        p.bar = barMode.rawValue
         p.follow = followClaude
         p.narrate = narrateClaude
         p.checkUsage = checkUsage
@@ -925,7 +867,9 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         p.week = claude.current(claude.weekly)
         p.usageAt = claude.usageAt
         if followClaude {
-            p.sessions = claude.sessions.values.sorted { $0.last > $1.last }.prefix(8).map {
+            // the ones that need you, then the ones working, then the rest; by name within each, so rows don't jump around
+            let rank = { (s: ClaudeSession) in s.need != nil ? 0 : s.busy ? 1 : 2 }
+            p.sessions = claude.sessions.values.sorted { (rank($0), $0.project, $0.id) < (rank($1), $1.project, $1.id) }.prefix(8).map {
                 PanelSession(id: $0.id, project: $0.project, line: describe($0), needsYou: $0.need != nil, busy: $0.busy)
             }
         }
@@ -939,6 +883,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         case .roam: toggleRoam()
         case .appAware: toggleAppAware()
         case .emoji: toggleEmoji()
+        case .water: toggleWater()
         case .quiet: toggleQuiet()
         case .login: toggleLogin()
         case .corner: resetPosition()
@@ -950,7 +895,6 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
             defaults.set(!checkUsage, forKey: "checkUsage")
             if checkUsage { claude.checkUsage() }
         case .refreshUsage: claude.checkUsage()
-        case .bar(let raw): setBarMode(raw)
         case .focus(let id): sheet.close(); claude.focus(claude.sessions[id])
         case .quit: NSApp.terminate(nil)
         case .close: sheet.close()
@@ -958,30 +902,10 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         sheet.update()
     }
 
-    func setBarMode(_ raw: String) {
-        guard let mode = BarMode(rawValue: raw), mode != barMode else { return }
-        defaults.set(raw, forKey: "menuBar")
-        let wasUnder = statusItem != nil && sheet.isOpen
-        buildStatusItem()
-        if mode == .hidden {
-            sheet.close()
-            if !panel.isVisible { toggleVisible() }
-            js("mochi.play('wave', 'menu bar icon hidden! right-click me for my menu')")
-        } else if wasUnder, let b = statusItem?.button {
-            sheet.show(under: b)   // the icon changed size: hang under it again
-        }
-    }
-
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        // opening Mochi again brings it back, the only way back when it and the menu bar icon are both hidden
+        // opening Mochi again brings it back: the only way back once it's hidden
         if !panel.isVisible { toggleVisible() }
         return false
-    }
-
-    func item(_ title: String, _ action: Selector, key: String = "", target: AnyObject? = nil) -> NSMenuItem {
-        let it = NSMenuItem(title: title, action: action, keyEquivalent: key)
-        it.target = target ?? self
-        return it
     }
 
     func petAction(_ id: String) {
@@ -1027,6 +951,11 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         js("mochi.setEmoji(\(emoji))")
     }
 
+    @objc func toggleWater() {
+        defaults.set(!waterReminders, forKey: "waterReminders")
+        js("mochi.setWater(\(waterReminders))")
+    }
+
     @objc func toggleQuiet() {
         let until = quiet ? 0 : (Date().timeIntervalSince1970 + 3600) * 1000
         quiet.toggle()
@@ -1053,34 +982,6 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         saveSpot()
         send("still")
         if !panel.isVisible { toggleVisible() }
-    }
-
-    /// The critter's silhouette as a template image for the menu bar.
-    static func menuIcon() -> NSImage {
-        let rows = [
-            "..........",
-            ".########.",
-            "##########",
-            "##.####.##",
-            "##.####.##",
-            "##########",
-            "##########",
-            ".########.",
-            ".#.#..#.#.",
-            ".#.#..#.#.",
-        ]
-        let px: CGFloat = 1.6
-        let img = NSImage(size: NSSize(width: 10 * px + 2, height: 10 * px + 2), flipped: true) { _ in
-            NSColor.black.setFill()
-            for (y, row) in rows.enumerated() {
-                for (x, c) in row.enumerated() where c == "#" {
-                    NSRect(x: 1 + CGFloat(x) * px, y: 1 + CGFloat(y) * px, width: px, height: px).fill()
-                }
-            }
-            return true
-        }
-        img.isTemplate = true
-        return img
     }
 }
 

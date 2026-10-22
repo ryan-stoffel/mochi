@@ -114,6 +114,8 @@
   // ---------- speech bubble ----------
   // emoji are off unless you turn them on: pixel icons stand in for them (icons.js)
   let emoji = ENV.emoji === true || params.get('emoji') === '1';
+  // water reminders can be turned off in Settings; logging water from the panel still works
+  let waterOn = ENV.water !== false;
   const bubble = {
     show(text, buttons, onChoose) {
       R.bubbleText = text;
@@ -309,9 +311,9 @@
       caffeine
         ? { pose: 'offerCoffee', say: 'you look sleepy too. get yourself a coffee? ☕', dur: 90, buttons: [['☕ getting one', 'yes'], ['not today', 'no']],
             onChoose: (c) => (c === 'yes' ? coffeeYes() : c === 'no' ? say('coffee', "fair! water then? i'll sip for both of us 💧", 6) : null) }
-        : { pose: 'water', say: 'grab some water too? 💧', dur: 90, buttons: [['💧 okay', 'yes'], ['later', 'no']],
+        : waterOn && { pose: 'water', say: 'grab some water too? 💧', dur: 90, buttons: [['💧 okay', 'yes'], ['later', 'no']],
             onChoose: (c) => (c === 'yes' ? waterYes() : snooze('water', 15)) },
-    ]);
+    ].filter(Boolean));
   }
 
   function onReturn(was) {
@@ -350,7 +352,7 @@
       return say('night', pick([`it's ${clock(t)}... the work will still be here tomorrow 🌙`, 'sleepy o\'clock. save your stuff and rest soon?', `${clock(t)}! your future self wants you asleep 💤`]), 10, 'z', { fxN: 2 });
     }
     if (S.sit >= CFG.walk && t >= (R.snooze.walk || 0)) return askWalk();
-    if (D.active - S.waterAt >= CFG.water && t >= (R.snooze.water || 0)) return askWater();
+    if (waterOn && D.active - S.waterAt >= CFG.water && t >= (R.snooze.water || 0)) return askWater();
     if (!F.patternCoffee && h >= 6 && h < 15 && caffeine() < 3 && coffeeHabitNow(m) && !recentCoffee(m)) {
       F.patternCoffee = 1;
       return ask('offerCoffee', 'you usually grab a coffee around now ☕ want one?', [['☕ yes please', 'yes'], ['skip today', 'no']], (c) => (c === 'yes' ? coffeeYes() : null));
@@ -367,7 +369,7 @@
       F.slump = 1;
       if (h < 15 && caffeine() < 3) return ask('energy', 'afternoon slump? coffee, energy drink, or a quick walk?', [['☕ coffee', 'coffee'], ['⚡ energy', 'energy'], ['🚶 walk', 'walk']],
         (c) => (c === 'coffee' ? coffeeYes() : c === 'energy' ? energyYes() : c === 'walk' ? startWalk() : null));
-      return ask('water', "afternoon slump? it's late for caffeine, so you sleep okay. water + a stretch? 💧", [['💧 okay', 'yes'], ['nah', 'no']], (c) => (c === 'yes' ? waterYes() : null));
+      if (waterOn) return ask('water', "afternoon slump? it's late for caffeine, so you sleep okay. water + a stretch? 💧", [['💧 okay', 'yes'], ['nah', 'no']], (c) => (c === 'yes' ? waterYes() : null));
     }
     const ue = usualEnd();
     if (!F.wrap && ue != null && m >= ue - 15 && m <= ue + 30 && D.active > 2 * CFG.hour) {
@@ -767,6 +769,11 @@
       R.now = Date.now();
       if (ok) say('cheer', "connected! restart your claude code sessions and i'll follow along :sparkle:", 8, 'sparkle');
       else say('sweaty', `couldn't connect to claude code: ${why}`, 8);
+    },
+    setWater(on) {
+      waterOn = !!on;
+      R.now = Date.now();
+      if (!waterOn && R.scene && R.scene.pose === 'water') endScene();   // stop asking right away
     },
     setEmoji(on) {
       emoji = !!on;

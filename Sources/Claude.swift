@@ -30,7 +30,16 @@ struct ClaudeSession {
     var todos: (done: Int, total: Int) = (0, 0)
     var ctx: Double?                    // how full its context window is, %
     var last = 0.0
-    var project: String { cwd.isEmpty ? "Claude Code" : (cwd as NSString).lastPathComponent }
+    /// The folder's name. Folders named by an ID, like the per-chat worktrees some apps make, are skipped for the project
+    /// they belong to: ".../worktrees/mochi-54f25aee/01a1616b-ad6d-..." → "mochi".
+    var project: String {
+        guard !cwd.isEmpty else { return "Claude Code" }
+        var parts = (cwd as NSString).pathComponents
+        let isID = { (s: String) in s.range(of: #"^[0-9a-f]{8}-[0-9a-f]{4}-"#, options: .regularExpression) != nil }
+        guard parts.count > 2, let last = parts.last, isID(last) else { return parts.last ?? cwd }
+        while parts.count > 2, let l = parts.last, isID(l) { parts.removeLast() }
+        return parts.last!.replacingOccurrences(of: #"-[0-9a-f]{6,}$"#, with: "", options: .regularExpression)
+    }
     var helpers: Int { max(agents.count, spawns) }
 }
 

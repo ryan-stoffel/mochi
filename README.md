@@ -12,7 +12,7 @@ A pixel critter that lives on your Mac's screens: it wanders around, hops onto y
 
    Or, from Terminal: `xattr -dr com.apple.quarantine /Applications/Mochi.app`
 
-Mochi lives in your menu bar (no Dock icon). To quit, use its menu bar icon → Quit.
+Mochi has no Dock or menu bar icon. Right-click it for its panel; **Quit Mochi** is at the bottom of Settings. If you hide Mochi, open the app again to bring it back.
 
 ## What it does
 
@@ -26,7 +26,7 @@ Mochi lives in your menu bar (no Dock icon). To quit, use its menu bar icon → 
 | step away (45 s+) | juggles or waters its plant |
 | stay away (8 min+) | naps under a book (nightcap after 11pm) |
 | come back from a break | waves, counts it as a break |
-| have been at it 45 min without water | holds out a glass of water |
+| have been at it 45 min without water | holds out a glass of water (turn off **Water reminders** in Settings) |
 | have sat 55 min | puts on sneakers and asks you to walk with it |
 | have sat way too long | turns into a TV |
 | work 11:30–1:45 | puts on a chef hat: have you eaten? |
@@ -62,7 +62,7 @@ It sticks to the bottom of the screen and to windows with room above them: a win
 
 ### Claude Code
 
-Connect it from the menu (**Claude Code → Connect Claude Code…**, or say yes when Mochi offers) and restart your Claude Code sessions. From then on Mochi acts out what Claude is doing, in a terminal, an editor or the Claude app, and says a word about it:
+Connect it from the panel (**Settings → Claude Code → Connect**, or say yes when Mochi offers) and restart your Claude Code sessions. From then on Mochi acts out what Claude is doing, in a terminal, an editor or the Claude app, and says a word about it:
 
 | Claude is... | Mochi... |
 |---|---|
@@ -83,19 +83,16 @@ The idea and the hook events come from [claude-desktop-pet](https://github.com/H
 
 With several sessions going, the most urgent one wins (anything that needs you first), and the panel's Claude tab lists each one; click one to switch to it. Turn off **Say What Claude Is Doing** to only hear when Claude needs you or is done, or **Act Out What Claude Is Doing** to ignore it altogether.
 
-### The menu bar
+### Usage
 
-**Menu Bar** picks what's up there:
+The panel's Claude tab shows how much of your 5-hour and weekly limits you've used and when each resets, like [AI Usage](https://github.com/eli-manning/Ai-Usage). Pro and Max plans only. It stays current two ways:
 
-- **Claude Usage** (the default): a badge with how much of your 5-hour limit you've used, like [AI Usage](https://github.com/eli-manning/Ai-Usage). Click it for 5-hour and weekly gauges and when each resets. Pro and Max plans only. It stays current two ways:
-  - **as you work**: Claude Code's status line hands Mochi the new numbers after every message (once Claude Code is connected);
-  - **on a timer**: every 5 minutes, and when you open the panel with numbers more than a minute old, Mochi runs `claude /usage` out of sight and reads the screen, like AI Usage does. It's a local command, so it doesn't send a prompt or use up your plan. Turn it off in Settings with **Check usage every 5 minutes**.
-- **Mochi Icon**: Mochi's silhouette.
-- **Hidden**: nothing. Right-click Mochi for the panel. If you hide Mochi too, open the app again to bring it back.
+- **as you work**: Claude Code's status line hands Mochi the new numbers after every message (once Claude Code is connected);
+- **on a timer**: every 5 minutes, and when you open the panel with numbers more than a minute old, Mochi runs `claude /usage` out of sight and reads the screen, like AI Usage does. It's a local command, so it doesn't send a prompt or use up your plan. Turn it off in Settings with **Check usage every 5 minutes**.
 
 It also cheers you on every 20–35 minutes, throws confetti on each hour you've worked, and gets heart eyes when you hover over it.
 
-**Emoji** are off by default: Mochi's speech bubble uses little pixel icons instead, and the menus use the system's symbols. Turn on **Use Emoji** if you'd rather have them.
+**Emoji** are off by default: Mochi's speech bubble uses little pixel icons instead. Turn on **Use Emoji** if you'd rather have them.
 
 **Privacy:** Mochi reads macOS idle timers (seconds since the last key press or mouse move), the ID of the app in front (like `com.microsoft.VSCode`), where windows are on screen (positions only: no titles or contents), whether the camera, mic or speakers are in use (an on/off flag, never the audio or video), the battery level, and dark mode. It never sees what you type or what's in your windows. No permissions are needed and nothing leaves your Mac. Turn off **React to Apps & Calls** to stop it looking at apps, calls and music. State lives in `~/Library/Application Support/Mochi/state.json`.
 
@@ -104,11 +101,11 @@ It also cheers you on every 20–35 minutes, throws confetti on each hour you've
 ## Using it
 
 - **Drag** Mochi anywhere and let go (or throw it). **Click** to boop it.
-- **Click the menu bar icon, or right-click Mochi**, for Mochi's panel. Right-click the menu bar icon for just Show/Hide and Quit. The panel has four tabs:
+- **Right-click Mochi** for its panel. It has four tabs:
   - **Claude**: your 5-hour and weekly usage, and each Claude Code session with what it's doing (click one to switch to it). Connect Claude Code from here too.
   - **Today**: time at the computer, how long you've been sitting, water, coffee, energy drinks and breaks, and buttons to log them.
   - **Play**: cheer me on, how am I doing, play ball, water the plant, **Sit on My Window**, **Go Explore**, and costumes.
-  - **Settings**: size, roaming (off keeps it exactly where you put it, no gravity), reacting to apps and calls, quiet hour, open at login; Claude Code; the menu bar and emoji.
+  - **Settings**: size, roaming (off keeps it exactly where you put it, no gravity), reacting to apps and calls, water reminders, emoji, quiet hour, open at login; Claude Code.
 
 ## Building
 
@@ -133,9 +130,8 @@ Re-render the PNGs in `renders/`: `Mochi.app/Contents/MacOS/Mochi --render <fold
 ## Files
 
 - `Sources/Claude.swift`: Claude Code: the local listener its hooks talk to, what each session is doing, usage limits, and connecting/disconnecting `~/.claude/settings.json`.
-- `Sources/MenuBar.swift`: the usage badge in the menu bar.
-- `Sources/Panel.swift`: the panel (SwiftUI, in a borderless window, styled like AI Usage's popover).
-- `Sources/main.swift`: the Mac app: transparent always-on-top window, how Mochi gets around (screens and window tops become ledges; walking, hopping, falling, riding), sensors (idle, sleep/wake, app in front, camera/mic, battery), menus, saving.
+- `Sources/Panel.swift`: the panel (SwiftUI, in a borderless window).
+- `Sources/main.swift`: the Mac app: transparent always-on-top window, how Mochi gets around (screens and window tops become ledges; walking, hopping, falling, riding), sensors (idle, sleep/wake, app in front, camera/mic, battery), the panel's actions, saving.
 - `web/pet.js`: the critter. Every pose and prop is drawn as pixel strings on a 46×34 canvas.
 - `web/brain.js`: decides what Mochi does and says, and how much it may roam right now (it stays put while you type).
 - `web/icons.js`: pixel icons that stand in for emoji in the speech bubble.
