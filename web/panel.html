@@ -9,6 +9,7 @@
   html, body { margin: 0; background: transparent; overflow: hidden; -webkit-user-select: none; user-select: none; cursor: default; }
   #wrap { display: inline-block; padding: 6px 9px 18px 6px; }     /* room for the border, the shadow and the tail */
   .below #wrap { padding: 18px 9px 6px 6px; }
+  .card:focus { outline: none; }
   .card.px-bubble { width: 316px; max-width: none; padding: 10px 12px 12px; font-size: 17px; }
   .card.px-bubble::after { left: var(--tail-left, 50%); }
   .card.px-bubble.pop { animation: panel-pop 0.2s steps(3, end); }   /* no fade: it must never get stuck invisible */
@@ -24,39 +25,31 @@
   header .mood { color: var(--muted); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ghost { display: grid; place-items: center; width: 28px; height: 28px; }
   .ghost:hover { background: var(--soft); }
+  .ghost.small-ghost { width: 20px; height: 20px; }
 
-  nav { display: flex; gap: 2px; margin: 9px -2px 0; }
-  nav button { display: flex; align-items: center; gap: 4px; padding: 3px 7px 5px; font-size: 16px; white-space: nowrap; }
-  nav button:hover { background: var(--soft); }
-  nav button.on { background: var(--ink); color: var(--paper); }
-  nav button.on svg path { fill: var(--paper); }
-  nav button.on .px-icon { filter: brightness(2.2); }
-  nav .grow { flex: 1; }
+  /* tabs: one framed strip, like the size picker; the open one is filled in */
+  nav { display: flex; margin: 12px 2px 4px; background: #f3e9dd;
+    box-shadow: 0 -2px 0 0 var(--ink), 0 2px 0 0 var(--ink), -2px 0 0 0 var(--ink), 2px 0 0 0 var(--ink), 0 4px 0 0 var(--shade); }
+  nav button { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: 4px; height: 26px; padding: 0 7px 2px; font-size: 16px; white-space: nowrap; }
+  nav button + button { box-shadow: -2px 0 0 0 var(--line); }
+  nav button:hover { background: #ece0d2; }
+  nav button.on { background: var(--orange); color: #fff; }
+  nav button.on + button { box-shadow: none; }
+  nav button.gear { flex: 0 0 34px; padding: 0 0 1px; }
+  nav button.on .px-icon { filter: brightness(2.4); }
 
-  .rule { height: 3px; margin: 10px 0 2px; background: repeating-linear-gradient(90deg, var(--line) 0 3px, transparent 3px 6px); }
-  h2 { display: flex; align-items: center; gap: 6px; margin: 10px 0 6px; font: inherit; font-size: 15px; color: var(--muted); }
-  h2 .end { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  h2 { display: flex; align-items: center; gap: 6px; margin: 12px 0 6px; font: inherit; font-size: 15px; color: var(--muted); }
+  h2 .end { margin-left: auto; display: flex; align-items: center; gap: 4px; font-size: 14px; }
   .muted { color: var(--muted); }
   .small { font-size: 14px; }
 
   /* usage: a chunky bar in an ink frame */
   .meter { margin-bottom: 9px; }
   .meter .top { display: flex; justify-content: space-between; }
-  .bar { position: relative; height: 9px; margin: 4px 2px 3px; background: var(--soft);
+  .bar { display: grid; grid-template-columns: repeat(20, 1fr); gap: 2px; padding: 2px; margin: 5px 2px 4px; background: var(--soft);
     box-shadow: 0 -2px 0 0 var(--ink), 0 2px 0 0 var(--ink), -2px 0 0 0 var(--ink), 2px 0 0 0 var(--ink); }
-  .bar i { position: absolute; inset: 0 auto 0 0; background: repeating-linear-gradient(90deg, var(--fill) 0 6px, transparent 6px 8px); }
-
-  /* rows you can click: sessions */
-  .row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 6px; margin: 0 -6px; min-width: 0; }
-  .row:hover { background: var(--soft); }
-  .row .sq { flex: none; width: 6px; height: 6px; background: var(--line); }
-  .row .sq.busy { background: var(--claude); }
-  .row .sq.need { background: var(--red); }
-  .row .txt { min-width: 0; line-height: 1.05; }
-  .row .txt div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .row .line { font-size: 14px; color: var(--muted); }
-  .row .line.need { color: var(--red); }
-  .row.idle .proj { color: var(--muted); }
+  .bar i { height: 8px; }
+  .bar i.lit { background: var(--fill); }
 
   .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 6px; }
   .stats b { display: block; font-weight: 400; font-size: 25px; line-height: 1; }
@@ -86,8 +79,10 @@
   .closet button.on span { color: var(--ink); }
 
   /* settings */
-  .set { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; min-height: 30px; }
-  .set + .set { background: repeating-linear-gradient(90deg, var(--line) 0 3px, transparent 3px 6px) top / 100% 2px no-repeat; }
+  .set { box-sizing: border-box; display: flex; width: calc(100% + 12px); margin: 0 -6px; padding: 0 6px; align-items: center; justify-content: space-between; gap: 8px; min-height: 30px; }
+  button.set:hover { background-color: var(--soft); }
+  .set .pxb { padding: 2px 8px 3px; font-size: 15px; }
+  .set + .set { background-image: repeating-linear-gradient(90deg, var(--line) 0 3px, transparent 3px 6px); background-size: calc(100% - 12px) 2px; background-position: 6px 0; background-repeat: no-repeat; }
   .set .dot { display: inline-block; width: 6px; height: 6px; margin-right: 6px; background: var(--line); vertical-align: 2px; }
   .set .dot.on { background: #4fae68; }
   .switch { position: relative; width: 30px; height: 14px; background: #e3d5c6;
@@ -109,13 +104,12 @@
 </head>
 <body>
 <div id="wrap">
-<div id="card" class="card px-bubble">
+<div id="card" class="card px-bubble" tabindex="-1">
   <header>
     <div class="who"><div class="name">mochi</div><div class="mood" id="mood"></div></div>
     <button class="ghost" id="eye"></button>
   </header>
   <nav id="tabs"></nav>
-  <div class="rule"></div>
   <div id="body"></div>
 </div>
 </div>

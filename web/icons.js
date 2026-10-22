@@ -34,6 +34,7 @@
     gear: ['..GGG..', '.GGqGG.', 'GGq.qGG', 'Gq...qG', 'GGq.qGG', '.GGqGG.', '..GGG..'],
     window: ['GGGGGGGG', 'GRGzGMGG', 'GwwwwwwG', 'GwwwwwwG', 'GwwwwwwG', 'GGGGGGGG'],
     eye: ['..kkk..', '.kwwwk.', 'kwwkwwk', '.kwwwk.', '..kkk..'],
+    refresh: ['..GGG.G', '.G...GG', 'G...GGG', 'G......', 'G.....G', '.G...G.', '..GGG..'],
   };
 
   // which icon stands in for which emoji (anything not listed is dropped)

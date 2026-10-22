@@ -7,13 +7,12 @@ import WebKit
 /// Something you clicked in the panel.
 enum PanelAction {
     case pet(String), size(Double), roam, appAware, emoji, water, quiet, login, corner, visible
-    case connect, follow, narrate, checkUsage, refreshUsage, focus(String), quit
+    case connect, follow, narrate, checkUsage, refreshUsage, quit
 
     init?(name: String, arg: String?) {
         switch name {
         case "pet": guard let arg else { return nil }; self = .pet(arg)
         case "size": guard let s = arg.flatMap(Double.init) else { return nil }; self = .size(s)
-        case "focus": guard let arg else { return nil }; self = .focus(arg)
         case "roam": self = .roam
         case "appAware": self = .appAware
         case "emoji": self = .emoji
@@ -73,11 +72,11 @@ final class PanelController: NSObject, WKScriptMessageHandler {
         if isOpen { return close() }
         mochi = (x, top, feet)
         below = !fitsAbove(size.height)
-        web.evaluateJavaScript("panel.show(\(Self.json(state())), \(below))")
         place()
         window.orderFrontRegardless()
         window.makeKey()
-        window.makeFirstResponder(web)
+        window.makeFirstResponder(web)   // before the page draws, so it can put focus on the card itself
+        web.evaluateJavaScript("panel.show(\(Self.json(state())), \(below))")
         opened(true)
 
         // nothing closes a borderless panel by itself: a click anywhere else does

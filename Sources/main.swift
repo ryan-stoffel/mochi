@@ -450,25 +450,6 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         js("mochi.setClaude(\(followClaude), \(narrateClaude))")
     }
 
-    /// "editing App.tsx", for the panel.
-    func describe(_ s: ClaudeSession) -> String {
-        let now = Date().timeIntervalSince1970
-        if s.need == "question" { return "has a question for you" }
-        if s.need != nil { return s.needTool.isEmpty ? "needs your OK" : "needs your OK to use \(s.needTool)" }
-        if now < s.errorUntil { return "hit an error" }
-        if s.busy && s.helpers > 0 { return s.helpers == 1 ? "running a helper" : "running \(s.helpers) helpers" }
-        if !s.tool.isEmpty && (s.running > 0 || now < s.toolUntil) {
-            let verb = ["reading": "reading", "writing": s.toolName == "Write" ? "writing" : "editing", "searchCode": "searching",
-                        "searchWeb": "searching the web", "testing": "running tests", "committing": "committing", "server": "starting a server",
-                        "plan": "updating the plan"][s.tool]
-            if let verb { return s.detail.isEmpty || ["testing", "committing", "plan"].contains(s.tool) ? verb : "\(verb) \(s.detail)" }
-            return s.detail.isEmpty ? "working" : s.detail
-        }
-        if s.busy { return "thinking" }
-        if now < s.doneUntil { return "done" }
-        return "idle"
-    }
-
     // MARK: getting around
 
     /// Re-reads the windows, rides along if the one Mochi's on moved, and drops it if it closed or got covered.
@@ -861,11 +842,6 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
             f.unitsStyle = .short
             updated = Date().timeIntervalSince(at) < 60 ? "updated just now" : "updated " + f.localizedString(for: at, relativeTo: Date())
         }
-        // the ones that need you, then the ones working, then the rest; by name within each, so rows don't jump around
-        let rank = { (s: ClaudeSession) in s.need != nil ? 0 : s.busy ? 1 : 2 }
-        let sessions = !followClaude ? [] : claude.sessions.values.sorted { (rank($0), $0.project, $0.id) < (rank($1), $1.project, $1.id) }.prefix(8).map {
-            ["id": $0.id, "project": $0.project, "line": describe($0), "need": $0.need != nil, "busy": $0.busy] as [String: Any]
-        }
         return [
             "tab": defaults.string(forKey: "panelTab") ?? "claude", "mood": mood, "stats": stats, "wearing": wearing,
             "visible": panel.isVisible, "quiet": quiet, "roam": roam, "appAware": appAware, "emoji": emoji, "water": waterReminders,
@@ -873,7 +849,6 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
             "follow": followClaude, "narrate": narrateClaude, "checkUsage": checkUsage, "canCheck": ClaudeCode.binary != nil,
             "connected": claudeLinked, "listening": claude.listening, "port": Int(ClaudeCode.port),
             "five": usage(claude.current(claude.fiveHour)), "week": usage(claude.current(claude.weekly)), "updated": updated,
-            "sessions": Array(sessions),
             "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
         ]
     }
@@ -897,7 +872,6 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
             defaults.set(!checkUsage, forKey: "checkUsage")
             if checkUsage { claude.checkUsage() }
         case .refreshUsage: claude.checkUsage()
-        case .focus(let id): sheet.close(); claude.focus(claude.sessions[id])
         case .quit: NSApp.terminate(nil)
         }
         sheet.update()

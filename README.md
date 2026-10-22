@@ -81,11 +81,11 @@ Connect it from the panel (**Settings → Claude Code → Connect**, or say yes 
 
 The idea and the hook events come from [claude-desktop-pet](https://github.com/Harriszed/claude-desktop-pet) (MIT), rebuilt here natively with Mochi's own art.
 
-With several sessions going, the most urgent one wins (anything that needs you first), and the panel's Claude tab lists each one; click one to switch to it. Turn off **Say What Claude Is Doing** to only hear when Claude needs you or is done, or **Act Out What Claude Is Doing** to ignore it altogether.
+With several sessions going, the most urgent one wins (anything that needs you first). Turn off **Say What Claude Is Doing** to only hear when Claude needs you or is done, or **Act Out What Claude Is Doing** to ignore it altogether.
 
 ### Usage
 
-The panel's Claude tab shows how much of your 5-hour and weekly limits you've used and when each resets, like [AI Usage](https://github.com/eli-manning/Ai-Usage). Pro and Max plans only. It stays current two ways:
+The panel's Usage tab shows how much of your 5-hour and weekly limits you've used and when each resets, like [AI Usage](https://github.com/eli-manning/Ai-Usage). Pro and Max plans only. It stays current two ways:
 
 - **as you work**: Claude Code's status line hands Mochi the new numbers after every message (once Claude Code is connected);
 - **on a timer**: every 5 minutes, and when you open the panel with numbers more than a minute old, Mochi runs `claude /usage` out of sight and reads the screen, like AI Usage does. It's a local command, so it doesn't send a prompt or use up your plan. Turn it off in Settings with **Check usage every 5 minutes**.
@@ -102,7 +102,7 @@ It also cheers you on every 20–35 minutes, throws confetti on each hour you've
 
 - **Drag** Mochi anywhere and let go (or throw it). **Click** to boop it.
 - **Right-click Mochi** for its panel: a big speech bubble over its head, while Mochi holds up a gear. Right-click again, click anywhere else or press Escape to close it. It has five tabs:
-  - **Claude**: your 5-hour and weekly usage, and each Claude Code session with what it's doing (click one to switch to it). Connect Claude Code from here too.
+  - **Usage**: how much of your Claude plan's 5-hour and weekly limits you've used, and when each resets. Connect Claude Code from here too.
   - **Today**: time at the computer, how long you've been sitting, water, coffee, energy drinks and breaks, and buttons to log them.
   - **Play**: cheer me on, how am I doing, play ball, water the plant, **Sit on My Window**, **Go Explore**.
   - **Dress up**: Mochi in every costume, live; click one and Mochi wears it for a little while, click it again to take it off.
