@@ -191,7 +191,11 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
     var roam: Bool { defaults.object(forKey: "roam") as? Bool ?? true }
     var appAware: Bool { defaults.object(forKey: "appAware") as? Bool ?? true }
     var emoji: Bool { defaults.bool(forKey: "emoji") }   // off: pixel icons in the bubble
-    var waterReminders: Bool { defaults.object(forKey: "waterReminders") as? Bool ?? true }
+    /// Reminders and Claude Code nudges you can turn off one by one in the panel; all on to start. brain.js reads them too.
+    static let toggles = ["waterReminders", "walkReminders", "stretchReminders", "lunchReminders", "coffeeReminders",
+                          "bedtimeReminders", "cheers", "claudeDone", "claudeFetch"]
+    func isOn(_ key: String) -> Bool { defaults.object(forKey: key) as? Bool ?? true }
+    var toggles: [String: Bool] { Dictionary(uniqueKeysWithValues: App.toggles.map { ($0, isOn($0)) }) }
     var followClaude: Bool { defaults.object(forKey: "followClaude") as? Bool ?? true }
     var narrateClaude: Bool { defaults.object(forKey: "narrateClaude") as? Bool ?? true }
     var checkUsage: Bool { defaults.object(forKey: "checkUsage") as? Bool ?? true }   // ask Claude Code for usage every 5 minutes
@@ -252,7 +256,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         }
         var env: [String: Any] = ["app": true, "boot": bootTime() * 1000, "launched": Date().timeIntervalSince1970 * 1000,
                                   "scale": scale, "w": size.width, "h": size.height, "below": App.below, "emoji": emoji,
-                                  "water": waterReminders, "claude": followClaude, "narrate": narrateClaude]
+                                  "toggles": toggles, "claude": followClaude, "narrate": narrateClaude]
         if let speed = ProcessInfo.processInfo.environment["MOCHI_SPEED"], let v = Double(speed) { env["speed"] = v }
         if ProcessInfo.processInfo.environment["MOCHI_TRACE"] != nil { env["trace"] = true }
         let boot = "window.MOCHI_SAVED = \(saved); window.MOCHI_ENV = \(json(env));"
@@ -415,7 +419,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         js("window.mochi && mochi.claude(\(s))")
         let state = d["state"] as? String ?? ""
         // Claude needs you: come over to where your pointer is, so you notice
-        if state == "waiting" && claudeState != "waiting" && followClaude && roam && motion == .still && panel.isVisible {
+        if state == "waiting" && claudeState != "waiting" && followClaude && isOn("claudeFetch") && roam && motion == .still && panel.isVisible {
             let now = CACurrentMediaTime()
             if now - attentionAt > 45 { attentionAt = now; visitPointer(NSEvent.mouseLocation) }
         }
@@ -844,10 +848,10 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         }
         return [
             "tab": defaults.string(forKey: "panelTab") ?? "claude", "mood": mood, "stats": stats, "wearing": wearing,
-            "visible": panel.isVisible, "quiet": quiet, "roam": roam, "appAware": appAware, "emoji": emoji, "water": waterReminders,
+            "visible": panel.isVisible, "quiet": quiet, "roam": roam, "appAware": appAware, "emoji": emoji, "toggles": toggles,
             "login": SMAppService.mainApp.status == .enabled, "scale": Double(scale),
             "follow": followClaude, "narrate": narrateClaude, "checkUsage": checkUsage, "canCheck": ClaudeCode.binary != nil,
-            "connected": claudeLinked, "listening": claude.listening, "port": Int(ClaudeCode.port),
+            "connected": claudeLinked, "projects": claude.projects.map { ["name": $0, "on": !claude.muted.contains($0)] }, "listening": claude.listening, "port": Int(ClaudeCode.port),
             "five": usage(claude.current(claude.fiveHour)), "week": usage(claude.current(claude.weekly)), "updated": updated,
             "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
         ]
@@ -860,7 +864,11 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         case .roam: toggleRoam()
         case .appAware: toggleAppAware()
         case .emoji: toggleEmoji()
-        case .water: toggleWater()
+        case .toggle(let key):
+            guard App.toggles.contains(key) else { break }
+            defaults.set(!isOn(key), forKey: key)
+            js("mochi.setToggle('\(key)', \(isOn(key)))")
+        case .project(let name): claude.toggleMuted(name)
         case .quiet: toggleQuiet()
         case .login: toggleLogin()
         case .corner: resetPosition()
@@ -924,11 +932,6 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
     @objc func toggleEmoji() {
         defaults.set(!emoji, forKey: "emoji")
         js("mochi.setEmoji(\(emoji))")
-    }
-
-    @objc func toggleWater() {
-        defaults.set(!waterReminders, forKey: "waterReminders")
-        js("mochi.setWater(\(waterReminders))")
     }
 
     @objc func toggleQuiet() {

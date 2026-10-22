@@ -413,10 +413,23 @@ final class ClaudeCode {
         }
     }
 
-    /// The one thing worth showing right now, across every session, most urgent first.
+    /// Projects you switched off in the panel: Mochi doesn't act out their sessions.
+    var muted: Set<String> { Set(defaults.stringArray(forKey: "mutedProjects") ?? []) }
+    /// Projects with a session going, for the panel's on/off list.
+    var projects: [String] { Set(sessions.values.map(\.project)).sorted() }
+    private var followed: [ClaudeSession] { let m = muted; return sessions.values.filter { !m.contains($0.project) } }
+
+    func toggleMuted(_ project: String) {
+        var m = muted
+        if m.remove(project) == nil { m.insert(project) }
+        defaults.set(m.sorted(), forKey: "mutedProjects")
+        changed()
+    }
+
+    /// The one thing worth showing right now, across every session you follow, most urgent first.
     func summary() -> (state: String, session: ClaudeSession?) {
         let now = Date().timeIntervalSince1970
-        let list = sessions.values.sorted { $0.last > $1.last }
+        let list = followed.sorted { $0.last > $1.last }
         if let s = list.filter({ $0.need != nil }).max(by: { $0.needAt < $1.needAt }) { return ("waiting", s) }
         if let s = list.first(where: { now < $0.errorUntil }) { return ("error", s) }
         if let s = list.first(where: { $0.compactAt > 0 && now - $0.compactAt < 90 }) { return ("compacting", s) }
@@ -431,7 +444,8 @@ final class ClaudeCode {
     /// What the page gets: enough for Mochi to act it out and say a word about it.
     func payload() -> [String: Any] {
         let (state, s) = summary()
-        var d: [String: Any] = ["state": state, "sessions": sessions.count, "busy": sessions.values.filter { $0.busy }.count]
+        let list = followed
+        var d: [String: Any] = ["state": state, "sessions": list.count, "busy": list.filter { $0.busy }.count]
         if let s {
             d["project"] = s.project
             d["tool"] = s.toolName

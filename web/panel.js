@@ -87,7 +87,8 @@
     },
 
     settings() {
-      const sw = (label, on, name) => h('button', { class: 'set', onclick: () => act(name) }, label, h('span', { class: 'switch' + (on ? ' on' : '') }));
+      const sw = (label, on, name, arg) => h('button', { class: 'set', onclick: () => act(name, arg) }, label, h('span', { class: 'switch' + (on ? ' on' : '') }));
+      const tg = (label, key) => sw(label, (S.toggles || {})[key] !== false, 'toggle', key);
       const sizes = [['s', 2], ['m', 3], ['l', 4], ['xl', 6]];
       return [
         h('h2', {}, 'mochi'),
@@ -98,7 +99,13 @@
         sw('use emoji', S.emoji, 'emoji'),
         sw('open at login', S.login, 'login'),
         h('h2', {}, 'reminders'),
-        sw('water reminders', S.water, 'water'),
+        tg('drink water', 'waterReminders'),
+        tg('get up and walk', 'walkReminders'),
+        tg('stretches & eye breaks', 'stretchReminders'),
+        tg('lunch', 'lunchReminders'),
+        tg('coffee', 'coffeeReminders'),
+        tg('bedtime', 'bedtimeReminders'),
+        tg('cheer me on', 'cheers'),
         sw('quiet for an hour', S.quiet, 'quiet'),
         h('h2', {}, 'claude code'),
         h('div', { class: 'set' }, h('span', {}, h('span', { class: 'dot' + (S.connected ? ' on' : '') }),
@@ -106,7 +113,11 @@
           h('button', { class: 'pxb' + (S.connected ? '' : ' primary'), onclick: () => act('connect') }, S.connected ? 'disconnect' : 'connect')),
         sw('act out what claude is doing', S.follow, 'follow'),
         sw('say what claude is doing', S.narrate, 'narrate'),
+        tg("tell me when it's done", 'claudeDone'),
+        tg('come find me when it needs me', 'claudeFetch'),
         S.canCheck && sw('check usage every 5 minutes', S.checkUsage, 'checkUsage'),
+        S.projects && S.projects.length > 0 && h('h2', {}, 'sessions'),
+        ...(S.projects || []).map((p) => sw(p.name, p.on, 'project', p.name)),
         h('div', { class: 'foot' }, h('span', { class: 'muted' }, S.version ? 'mochi ' + S.version : ''),
           h('button', { class: 'pxb', title: "bring mochi back if it's lost", onclick: () => act('corner') }, 'move to corner'),
           h('button', { class: 'pxb', onclick: () => act('quit') }, 'quit')),
@@ -138,6 +149,7 @@
       return b;
     }));
     $('body').replaceChildren(...[(VIEWS[tab] || VIEWS.claude)()].flat().filter(Boolean));
+    $('body').classList.toggle('scroll', tab === 'settings');
   }
 
   $('eye').addEventListener('click', () => act('visible'));
@@ -149,7 +161,7 @@
     show(state, below) {
       S = state;
       tab = VIEWS[state.tab] ? state.tab : 'claude';
-      document.body.classList.toggle('below', !!below);
+      $('wrap').classList.toggle('below', !!below);
       render(true);
       const card = $('card');
       card.focus({ preventScroll: true });   // Escape works, and no button shows a focus ring until you press Tab
@@ -159,7 +171,7 @@
     },
     update(state) { S = state; render(); },
     place(tail, below) {
-      document.body.classList.toggle('below', !!below);
+      $('wrap').classList.toggle('below', !!below);
       $('card').style.setProperty('--tail-left', tail - 9 + 'px');   // less #wrap's padding and the card's margin
     },
   };
@@ -170,9 +182,10 @@
     panel.show({
       tab: params.get('tab') || 'claude', mood: 'at your service', visible: true, wearing: 'wizard', emoji: false, connected: true, listening: true, canCheck: true,
       checkUsage: true, five: { pct: 21, resets: '9:20 PM' }, week: { pct: 74, resets: 'Sun 12:00 PM' }, updated: 'updated 2 min ago',
-      stats: { active: '3h 12m', sitting: '41m', water: 3, coffee: 1, energy: 0, breaks: 2 }, roam: true, appAware: true, water: true, quiet: false, login: true,
+      stats: { active: '3h 12m', sitting: '41m', water: 3, coffee: 1, energy: 0, breaks: 2 }, roam: true, appAware: true, quiet: false, login: true,
+      toggles: { lunchReminders: false }, projects: [{ name: 'mochi', on: true }, { name: 'parallax', on: false }],
       scale: 3, follow: true, narrate: true, version: '1.1', port: 47833,
-    }, false);
-    panel.place(170, false);
+    }, params.has('below'));
+    panel.place(170, params.has('below'));
   }
 })();

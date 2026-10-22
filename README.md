@@ -26,7 +26,7 @@ Mochi has no Dock or menu bar icon. Right-click it for its panel; **Quit Mochi**
 | step away (45 s+) | juggles or waters its plant |
 | stay away (8 min+) | naps under a book (nightcap after 11pm) |
 | come back from a break | waves, counts it as a break |
-| have been at it 45 min without water | holds out a glass of water (turn off **Water reminders** in Settings) |
+| have been at it 45 min without water | holds out a glass of water (turn off **drink water** in Settings) |
 | have sat 55 min | puts on sneakers and asks you to walk with it |
 | have sat way too long | turns into a TV |
 | work 11:30–1:45 | puts on a chef hat: have you eaten? |
@@ -106,7 +106,7 @@ It also cheers you on every 20–35 minutes, throws confetti on each hour you've
   - **Today**: time at the computer, how long you've been sitting, water, coffee, energy drinks and breaks, and buttons to log them.
   - **Play**: cheer me on, how am I doing, play ball, water the plant, **Sit on My Window**, **Go Explore**.
   - **Dress up**: Mochi in every costume, live; click one and Mochi wears it for a little while, click it again to take it off.
-  - **Settings** (the gear): size, roaming (off keeps it exactly where you put it, no gravity), reacting to apps and calls, emoji, open at login; water reminders, quiet hour; Claude Code.
+  - **Settings** (the gear): size, roaming (off keeps it exactly where you put it, no gravity), reacting to apps and calls, emoji, open at login; a switch for each reminder (water, walks, stretches, lunch, coffee, bedtime, cheering) and the quiet hour; Claude Code, including a switch for each project with a session going.
 
 ## Building
 

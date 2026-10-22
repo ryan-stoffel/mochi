@@ -114,8 +114,9 @@
   // ---------- speech bubble ----------
   // emoji are off unless you turn them on: pixel icons stand in for them (icons.js)
   let emoji = ENV.emoji === true || params.get('emoji') === '1';
-  // water reminders can be turned off in Settings; logging water from the panel still works
-  let waterOn = ENV.water !== false;
+  // reminders and nudges, each switched off on its own in Settings (App.toggles in main.swift); logging water etc. still works
+  const toggles = Object.assign({}, ENV.toggles);
+  const want = (k) => toggles[k] !== false;
   const bubble = {
     show(text, buttons, onChoose) {
       R.bubbleText = text;
@@ -308,10 +309,10 @@
       caffeine
         ? { pose: 'sip', say: '*sip*... okay. coffee is helping.', dur: 7, after() { S.energy += 0.15; } }
         : { pose: 'sipWater', say: '*sip*... water. good.', dur: 6, after() { S.energy += 0.1; } },
-      caffeine
+      caffeine && want('coffeeReminders')
         ? { pose: 'offerCoffee', say: 'you look sleepy too. get yourself a coffee? ☕', dur: 90, buttons: [['☕ getting one', 'yes'], ['not today', 'no']],
             onChoose: (c) => (c === 'yes' ? coffeeYes() : c === 'no' ? say('coffee', "fair! water then? i'll sip for both of us 💧", 6) : null) }
-        : waterOn && { pose: 'water', say: 'grab some water too? 💧', dur: 90, buttons: [['💧 okay', 'yes'], ['later', 'no']],
+        : want('waterReminders') && { pose: 'water', say: 'grab some water too? 💧', dur: 90, buttons: [['💧 okay', 'yes'], ['later', 'no']],
             onChoose: (c) => (c === 'yes' ? waterYes() : snooze('water', 15)) },
     ].filter(Boolean));
   }
@@ -338,6 +339,9 @@
     if (was >= CFG.breakIdle) return say('wave', pick(['welcome back!', 'there you are! good break?', "you're back ✨"]), 5);
   }
 
+  // the questions each reminder asks with, so turning it off can close one that's showing
+  const TOGGLE_ASKS = { waterReminders: ['water'], walkReminders: ['walkAsk', 'tv'], lunchReminders: ['chef'], coffeeReminders: ['offerCoffee', 'energy'] };
+
   // ---------- unprompted nudges, most important first ----------
   function maybeNudge(t, s) {
     if (s.idle > 20) return; // you're not looking
@@ -347,17 +351,17 @@
     const D = S.day, F = D.flags, h = hour(t), m = mod(t);
     const flow = R.flowSince && t - R.flowSince > 3 * MIN;
 
-    if (isNight(t) && t - S.nightAt > CFG.night * SEC) {
+    if (want('bedtimeReminders') && isNight(t) && t - S.nightAt > CFG.night * SEC) {
       S.nightAt = t;
       return say('night', pick([`it's ${clock(t)}... the work will still be here tomorrow 🌙`, 'sleepy o\'clock. save your stuff and rest soon?', `${clock(t)}! your future self wants you asleep 💤`]), 10, 'z', { fxN: 2 });
     }
-    if (S.sit >= CFG.walk && t >= (R.snooze.walk || 0)) return askWalk();
-    if (waterOn && D.active - S.waterAt >= CFG.water && t >= (R.snooze.water || 0)) return askWater();
-    if (!F.patternCoffee && h >= 6 && h < 15 && caffeine() < 3 && coffeeHabitNow(m) && !recentCoffee(m)) {
+    if (want('walkReminders') && S.sit >= CFG.walk && t >= (R.snooze.walk || 0)) return askWalk();
+    if (want('waterReminders') && D.active - S.waterAt >= CFG.water && t >= (R.snooze.water || 0)) return askWater();
+    if (want('coffeeReminders') && !F.patternCoffee && h >= 6 && h < 15 && caffeine() < 3 && coffeeHabitNow(m) && !recentCoffee(m)) {
       F.patternCoffee = 1;
       return ask('offerCoffee', 'you usually grab a coffee around now ☕ want one?', [['☕ yes please', 'yes'], ['skip today', 'no']], (c) => (c === 'yes' ? coffeeYes() : null));
     }
-    if (!F.lunch && m >= 11 * 60 + 30 && m <= 13 * 60 + 45 && D.active > 20 * 60 / SPEED && t >= (R.snooze.lunch || 0)) {
+    if (want('lunchReminders') && !F.lunch && m >= 11 * 60 + 30 && m <= 13 * 60 + 45 && D.active > 20 * 60 / SPEED && t >= (R.snooze.lunch || 0)) {
       return ask('chef', pick(["lunch time? i'm making pancakes 🥞 have you eaten?", "it's lunch o'clock 🍳 go eat something?"]),
         [['🍽 going to eat', 'yes'], ['already ate', 'ate'], ['later', 'later']], (c) => {
           if (c === 'yes') { F.lunch = 1; return say('wave', "enjoy! i'll guard the desk 🛡", 5); }
@@ -367,30 +371,30 @@
     }
     if (!F.slump && h >= 14 && h < 16 && S.energy < 0.5 && S.sit > 20 * 60 / SPEED) {
       F.slump = 1;
-      if (h < 15 && caffeine() < 3) return ask('energy', 'afternoon slump? coffee, energy drink, or a quick walk?', [['☕ coffee', 'coffee'], ['⚡ energy', 'energy'], ['🚶 walk', 'walk']],
+      if (want('coffeeReminders') && h < 15 && caffeine() < 3) return ask('energy', 'afternoon slump? coffee, energy drink, or a quick walk?', [['☕ coffee', 'coffee'], ['⚡ energy', 'energy'], ['🚶 walk', 'walk']],
         (c) => (c === 'coffee' ? coffeeYes() : c === 'energy' ? energyYes() : c === 'walk' ? startWalk() : null));
-      if (waterOn) return ask('water', "afternoon slump? it's late for caffeine, so you sleep okay. water + a stretch? 💧", [['💧 okay', 'yes'], ['nah', 'no']], (c) => (c === 'yes' ? waterYes() : null));
+      if (want('waterReminders')) return ask('water', "afternoon slump? it's late for caffeine, so you sleep okay. water + a stretch? 💧", [['💧 okay', 'yes'], ['nah', 'no']], (c) => (c === 'yes' ? waterYes() : null));
     }
     const ue = usualEnd();
-    if (!F.wrap && ue != null && m >= ue - 15 && m <= ue + 30 && D.active > 2 * CFG.hour) {
+    if (want('cheers') && !F.wrap && ue != null && m >= ue - 15 && m <= ue + 30 && D.active > 2 * CFG.hour) {
       F.wrap = 1;
       return say('proud', "this is usually around when you wrap up. almost there 🌙", 8);
     }
     const hrs = Math.floor(D.active / CFG.hour);
-    if (hrs > D.milestones) {
+    if (want('cheers') && hrs > D.milestones) {
       D.milestones = hrs;
       return say('party', hrs === 1 ? 'one whole hour today! 🎉' : `${hrs} hours today! 🎉 ${pick(['look at you', 'proud of you', 'what a day'])}`, 7);
     }
-    if (!F.long && D.active >= 6 * CFG.hour) {
+    if (want('cheers') && !F.long && D.active >= 6 * CFG.hour) {
       F.long = 1;
       return say('proud', `${fmt(D.active)} today. proud of you, go easy 💜`, 8);
     }
-    if (S.sit - S.stretchAt >= CFG.stretch && S.sit < CFG.walk - 5 * 60 / SPEED) {
+    if (want('stretchReminders') && S.sit - S.stretchAt >= CFG.stretch && S.sit < CFG.walk - 5 * 60 / SPEED) {
       S.stretchAt = S.sit;
       const [pose, line] = pick(STRETCHES);
       return say(pose, line, 9);
     }
-    if (t >= R.nextCheer) {
+    if (want('cheers') && t >= R.nextCheer) {
       if (flow && R.cheerDefer < 2) { R.cheerDefer++; R.nextCheer = t + 5 * MIN / SPEED; return; }
       R.cheerDefer = 0;
       R.nextCheer = t + (CFG.cheer[0] + Math.random() * (CFG.cheer[1] - CFG.cheer[0])) * SEC;
@@ -456,7 +460,7 @@
     if (C.state && C.state !== 'waiting') {
       const line = claudeLine(d), key = C.state + '|' + (d.detail || '');
       // say when it's done; narrate the rest only if you want that, and never more than every few seconds
-      const worth = C.state === 'done' || (C.narrate && C.state !== 'thinking' && (['error', 'hello'].includes(C.state) || t - C.saidAt > 7 * SEC));
+      const worth = (C.state === 'done' && want('claudeDone')) || (C.narrate && C.state !== 'thinking' && (['error', 'hello'].includes(C.state) || t - C.saidAt > 7 * SEC));
       if (line && worth && key !== C.said) { C.said = key; C.saidAt = t; claudeSay(line, C.state === 'done' ? 3500 : 2600); }
       if (C.state === 'done' && was !== 'done') view.burst('sparkle', 6);
     }
@@ -779,10 +783,11 @@
       R.ambient = '';
       ambient(Date.now(), R.last || IDLE);
     },
-    setWater(on) {
-      waterOn = !!on;
+    setToggle(key, on) {
+      toggles[key] = !!on;
       R.now = Date.now();
-      if (!waterOn && R.scene && R.scene.pose === 'water') endScene();   // stop asking right away
+      // stop asking right away
+      if (!on && R.scene && R.scene.buttons && (TOGGLE_ASKS[key] || []).includes(R.scene.pose)) endScene();
     },
     setEmoji(on) {
       emoji = !!on;
