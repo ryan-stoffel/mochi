@@ -52,6 +52,16 @@
         out.push(h('div', { class: 'muted small' }, S.checkUsage && S.canCheck ? 'checking your usage...' : 'your usage shows up after your next claude code message.'));
       }
       if (!S.connected) out.push(h('div', { class: 'btns' }, h('button', { class: 'pxb primary', onclick: () => act('connect') }, 'connect claude code')));
+      // each session, most recent first: red needs you, orange is working; click one to jump to its window
+      if (S.connected && (S.toggles || {}).showSessions !== false) {
+        out.push(h('h2', {}, 'sessions'));
+        if (!(S.sessions || []).length) out.push(h('div', { class: 'muted small' }, 'no claude code sessions right now.'));
+        for (const s of S.sessions || []) {
+          out.push(h('button', { class: 'set sess', title: 'switch to it', onclick: () => act('focus', s.id) },
+            h('span', {}, h('span', { class: 'dot' + (s.needsYou ? ' need' : s.busy ? ' busy' : '') }), s.project),
+            h('span', { class: 'line' + (s.needsYou ? ' need' : '') }, s.line)));
+        }
+      }
       return out;
     },
 
@@ -116,8 +126,7 @@
         tg("tell me when it's done", 'claudeDone'),
         tg('come find me when it needs me', 'claudeFetch'),
         S.canCheck && sw('check usage every 5 minutes', S.checkUsage, 'checkUsage'),
-        S.projects && S.projects.length > 0 && h('h2', {}, 'sessions'),
-        ...(S.projects || []).map((p) => sw(p.name, p.on, 'project', p.name)),
+        tg('show sessions', 'showSessions'),
         h('div', { class: 'foot' }, h('span', { class: 'muted' }, S.version ? 'mochi ' + S.version : ''),
           h('button', { class: 'pxb', title: "bring mochi back if it's lost", onclick: () => act('corner') }, 'move to corner'),
           h('button', { class: 'pxb', onclick: () => act('quit') }, 'quit')),
@@ -183,7 +192,8 @@
       tab: params.get('tab') || 'claude', mood: 'at your service', visible: true, wearing: 'wizard', emoji: false, connected: true, listening: true, canCheck: true,
       checkUsage: true, five: { pct: 21, resets: '9:20 PM' }, week: { pct: 74, resets: 'Sun 12:00 PM' }, updated: 'updated 2 min ago',
       stats: { active: '3h 12m', sitting: '41m', water: 3, coffee: 1, energy: 0, breaks: 2 }, roam: true, appAware: true, quiet: false, login: true,
-      toggles: { lunchReminders: false }, projects: [{ name: 'mochi', on: true }, { name: 'parallax', on: false }],
+      toggles: { lunchReminders: false }, sessions: [{ id: 'a', project: 'mochi', line: 'editing panel.js', busy: true },
+        { id: 'b', project: 'parallax', line: 'needs your OK to use Bash', needsYou: true }, { id: 'c', project: 'dotfiles', line: 'idle' }],
       scale: 3, follow: true, narrate: true, version: '1.1', port: 47833,
     }, params.has('below'));
     panel.place(170, params.has('below'));

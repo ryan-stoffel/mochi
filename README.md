@@ -102,11 +102,11 @@ It also cheers you on every 20–35 minutes, throws confetti on each hour you've
 
 - **Drag** Mochi anywhere and let go (or throw it). **Click** to boop it.
 - **Right-click Mochi** for its panel: a big speech bubble over its head, while Mochi holds up a gear. Right-click again, click anywhere else or press Escape to close it. It has five tabs:
-  - **Usage**: how much of your Claude plan's 5-hour and weekly limits you've used, and when each resets. Connect Claude Code from here too.
+  - **Usage**: how much of your Claude plan's 5-hour and weekly limits you've used, and when each resets, and your Claude Code sessions (click one to jump to it). Connect Claude Code from here too.
   - **Today**: time at the computer, how long you've been sitting, water, coffee, energy drinks and breaks, and buttons to log them.
   - **Play**: cheer me on, how am I doing, play ball, water the plant, **Sit on My Window**, **Go Explore**.
   - **Dress up**: Mochi in every costume, live; click one and Mochi wears it for a little while, click it again to take it off.
-  - **Settings** (the gear): size, roaming (off keeps it exactly where you put it, no gravity), reacting to apps and calls, emoji, open at login; a switch for each reminder (water, walks, stretches, lunch, coffee, bedtime, cheering) and the quiet hour; Claude Code, including a switch for each project with a session going.
+  - **Settings** (the gear): size, roaming (off keeps it exactly where you put it, no gravity), reacting to apps and calls, emoji, open at login; a switch for each reminder (water, walks, stretches, lunch, coffee, bedtime, cheering) and the quiet hour; Claude Code, including whether the Usage tab lists your sessions.
 
 ## Building
 

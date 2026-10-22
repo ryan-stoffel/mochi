@@ -191,9 +191,9 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
     var roam: Bool { defaults.object(forKey: "roam") as? Bool ?? true }
     var appAware: Bool { defaults.object(forKey: "appAware") as? Bool ?? true }
     var emoji: Bool { defaults.bool(forKey: "emoji") }   // off: pixel icons in the bubble
-    /// Reminders and Claude Code nudges you can turn off one by one in the panel; all on to start. brain.js reads them too.
+    /// Reminders, Claude Code nudges and the session list, each turned off on its own in the panel; all on to start. brain.js reads them too.
     static let toggles = ["waterReminders", "walkReminders", "stretchReminders", "lunchReminders", "coffeeReminders",
-                          "bedtimeReminders", "cheers", "claudeDone", "claudeFetch"]
+                          "bedtimeReminders", "cheers", "claudeDone", "claudeFetch", "showSessions"]
     func isOn(_ key: String) -> Bool { defaults.object(forKey: key) as? Bool ?? true }
     var toggles: [String: Bool] { Dictionary(uniqueKeysWithValues: App.toggles.map { ($0, isOn($0)) }) }
     var followClaude: Bool { defaults.object(forKey: "followClaude") as? Bool ?? true }
@@ -851,9 +851,12 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
             "visible": panel.isVisible, "quiet": quiet, "roam": roam, "appAware": appAware, "emoji": emoji, "toggles": toggles,
             "login": SMAppService.mainApp.status == .enabled, "scale": Double(scale),
             "follow": followClaude, "narrate": narrateClaude, "checkUsage": checkUsage, "canCheck": ClaudeCode.binary != nil,
-            "connected": claudeLinked, "projects": claude.projects.map { ["name": $0, "on": !claude.muted.contains($0)] }, "listening": claude.listening, "port": Int(ClaudeCode.port),
+            "connected": claudeLinked, "listening": claude.listening, "port": Int(ClaudeCode.port),
             "five": usage(claude.current(claude.fiveHour)), "week": usage(claude.current(claude.weekly)), "updated": updated,
             "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
+            "sessions": !isOn("showSessions") ? [] : claude.sessions.values.sorted { $0.last > $1.last }.prefix(8).map {
+                ["id": $0.id, "project": $0.project, "line": claude.describe($0), "needsYou": $0.need != nil, "busy": $0.busy]
+            },
         ]
     }
 
@@ -868,7 +871,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
             guard App.toggles.contains(key) else { break }
             defaults.set(!isOn(key), forKey: key)
             js("mochi.setToggle('\(key)', \(isOn(key)))")
-        case .project(let name): claude.toggleMuted(name)
+        case .focus(let id): sheet.close(); claude.focus(claude.sessions[id])
         case .quiet: toggleQuiet()
         case .login: toggleLogin()
         case .corner: resetPosition()

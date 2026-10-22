@@ -6,7 +6,7 @@ import WebKit
 
 /// Something you clicked in the panel.
 enum PanelAction {
-    case pet(String), size(Double), toggle(String), project(String), roam, appAware, emoji, quiet, login, corner, visible
+    case pet(String), size(Double), toggle(String), focus(String), roam, appAware, emoji, quiet, login, corner, visible
     case connect, follow, narrate, checkUsage, refreshUsage, quit
 
     init?(name: String, arg: String?) {
@@ -17,7 +17,7 @@ enum PanelAction {
         case "appAware": self = .appAware
         case "emoji": self = .emoji
         case "toggle": guard let arg else { return nil }; self = .toggle(arg)
-        case "project": guard let arg else { return nil }; self = .project(arg)
+        case "focus": guard let arg else { return nil }; self = .focus(arg)
         case "quiet": self = .quiet
         case "login": self = .login
         case "corner": self = .corner

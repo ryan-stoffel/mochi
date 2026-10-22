@@ -413,23 +413,10 @@ final class ClaudeCode {
         }
     }
 
-    /// Projects you switched off in the panel: Mochi doesn't act out their sessions.
-    var muted: Set<String> { Set(defaults.stringArray(forKey: "mutedProjects") ?? []) }
-    /// Projects with a session going, for the panel's on/off list.
-    var projects: [String] { Set(sessions.values.map(\.project)).sorted() }
-    private var followed: [ClaudeSession] { let m = muted; return sessions.values.filter { !m.contains($0.project) } }
-
-    func toggleMuted(_ project: String) {
-        var m = muted
-        if m.remove(project) == nil { m.insert(project) }
-        defaults.set(m.sorted(), forKey: "mutedProjects")
-        changed()
-    }
-
-    /// The one thing worth showing right now, across every session you follow, most urgent first.
+    /// The one thing worth showing right now, across every session, most urgent first.
     func summary() -> (state: String, session: ClaudeSession?) {
         let now = Date().timeIntervalSince1970
-        let list = followed.sorted { $0.last > $1.last }
+        let list = sessions.values.sorted { $0.last > $1.last }
         if let s = list.filter({ $0.need != nil }).max(by: { $0.needAt < $1.needAt }) { return ("waiting", s) }
         if let s = list.first(where: { now < $0.errorUntil }) { return ("error", s) }
         if let s = list.first(where: { $0.compactAt > 0 && now - $0.compactAt < 90 }) { return ("compacting", s) }
@@ -444,8 +431,7 @@ final class ClaudeCode {
     /// What the page gets: enough for Mochi to act it out and say a word about it.
     func payload() -> [String: Any] {
         let (state, s) = summary()
-        let list = followed
-        var d: [String: Any] = ["state": state, "sessions": list.count, "busy": list.filter { $0.busy }.count]
+        var d: [String: Any] = ["state": state, "sessions": sessions.count, "busy": sessions.values.filter { $0.busy }.count]
         if let s {
             d["project"] = s.project
             d["tool"] = s.toolName
@@ -457,6 +443,25 @@ final class ClaudeCode {
             if let c = s.ctx { d["ctx"] = c }
         }
         return d
+    }
+
+    /// One line on what a session is up to, for its row in the panel.
+    func describe(_ s: ClaudeSession) -> String {
+        let now = Date().timeIntervalSince1970
+        if s.need == "question" { return "has a question for you" }
+        if s.need != nil { return s.needTool.isEmpty ? "needs your OK" : "needs your OK to use \(s.needTool)" }
+        if now < s.errorUntil { return "hit an error" }
+        if s.busy && s.helpers > 0 { return s.helpers == 1 ? "running a helper" : "running \(s.helpers) helpers" }
+        if !s.tool.isEmpty && (s.running > 0 || now < s.toolUntil) {
+            let verb = ["reading": "reading", "writing": s.toolName == "Write" ? "writing" : "editing", "searchCode": "searching",
+                        "searchWeb": "searching the web", "testing": "running tests", "committing": "committing", "server": "starting a server",
+                        "plan": "updating the plan"][s.tool]
+            if let verb { return s.detail.isEmpty || ["testing", "committing", "plan"].contains(s.tool) ? verb : "\(verb) \(s.detail)" }
+            return s.detail.isEmpty ? "working" : s.detail
+        }
+        if s.busy { return "thinking" }
+        if now < s.doneUntil { return "done" }
+        return "idle"
     }
 
     // MARK: jumping to a session's window
