@@ -1,0 +1,126 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Mochi's panel</title>
+<link rel="stylesheet" href="pet.css">
+<style>
+  /* Mochi's panel: a big speech bubble with the same pixel border, paper, ink and font as the one Mochi talks in. */
+  html, body { margin: 0; background: transparent; overflow: hidden; -webkit-user-select: none; user-select: none; cursor: default; }
+  #wrap { display: inline-block; padding: 6px 9px 18px 6px; }     /* room for the border, the shadow and the tail */
+  .below #wrap { padding: 18px 9px 6px 6px; }
+  .card.px-bubble { width: 316px; max-width: none; padding: 10px 12px 12px; font-size: 17px; }
+  .card.px-bubble::after { left: var(--tail-left, 50%); }
+  .card.px-bubble.pop { animation: panel-pop 0.2s steps(3, end); }   /* no fade: it must never get stuck invisible */
+  @keyframes panel-pop { from { transform: translateY(8px) scale(0.94); } }
+  .card { --muted: #8d7a6e; --soft: #f5ebe0; --line: #e6d8c9; --orange: #e5714b; --claude: #d97757; --red: #d9483b; }
+
+  :where(.card) button { all: unset; box-sizing: border-box; cursor: pointer; font: inherit; }
+  :where(.card) button:focus-visible { outline: 2px dashed #5a78e0; outline-offset: 2px; }
+
+  header { display: flex; align-items: center; gap: 8px; }
+  header .who { flex: 1; min-width: 0; line-height: 1; }
+  header .name { font-size: 24px; }
+  header .mood { color: var(--muted); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ghost { display: grid; place-items: center; width: 28px; height: 28px; }
+  .ghost:hover { background: var(--soft); }
+
+  nav { display: flex; gap: 2px; margin: 9px -2px 0; }
+  nav button { display: flex; align-items: center; gap: 4px; padding: 3px 7px 5px; font-size: 16px; white-space: nowrap; }
+  nav button:hover { background: var(--soft); }
+  nav button.on { background: var(--ink); color: var(--paper); }
+  nav button.on svg path { fill: var(--paper); }
+  nav button.on .px-icon { filter: brightness(2.2); }
+  nav .grow { flex: 1; }
+
+  .rule { height: 3px; margin: 10px 0 2px; background: repeating-linear-gradient(90deg, var(--line) 0 3px, transparent 3px 6px); }
+  h2 { display: flex; align-items: center; gap: 6px; margin: 10px 0 6px; font: inherit; font-size: 15px; color: var(--muted); }
+  h2 .end { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 14px; }
+
+  /* usage: a chunky bar in an ink frame */
+  .meter { margin-bottom: 9px; }
+  .meter .top { display: flex; justify-content: space-between; }
+  .bar { position: relative; height: 9px; margin: 4px 2px 3px; background: var(--soft);
+    box-shadow: 0 -2px 0 0 var(--ink), 0 2px 0 0 var(--ink), -2px 0 0 0 var(--ink), 2px 0 0 0 var(--ink); }
+  .bar i { position: absolute; inset: 0 auto 0 0; background: repeating-linear-gradient(90deg, var(--fill) 0 6px, transparent 6px 8px); }
+
+  /* rows you can click: sessions */
+  .row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 6px; margin: 0 -6px; min-width: 0; }
+  .row:hover { background: var(--soft); }
+  .row .sq { flex: none; width: 6px; height: 6px; background: var(--line); }
+  .row .sq.busy { background: var(--claude); }
+  .row .sq.need { background: var(--red); }
+  .row .txt { min-width: 0; line-height: 1.05; }
+  .row .txt div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .line { font-size: 14px; color: var(--muted); }
+  .row .line.need { color: var(--red); }
+  .row.idle .proj { color: var(--muted); }
+
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 6px; }
+  .stats b { display: block; font-weight: 400; font-size: 25px; line-height: 1; }
+  .stats span { font-size: 14px; color: var(--muted); }
+
+  /* the bubble's own buttons, two or three to a row */
+  .btns { display: grid; gap: 10px 10px; padding: 2px 2px 4px; }
+  .btns.two { grid-template-columns: 1fr 1fr; }
+  .btns.four { grid-template-columns: repeat(4, 1fr); }
+  .card .pxb { display: flex; align-items: center; justify-content: center; gap: 5px; padding: 4px 6px 5px; font-size: 16px; line-height: 1; text-align: center;
+    background: #f3e9dd; box-shadow: 0 -2px 0 0 var(--ink), 0 2px 0 0 var(--ink), -2px 0 0 0 var(--ink), 2px 0 0 0 var(--ink), 0 4px 0 0 var(--shade); }
+  .card .pxb.left { justify-content: flex-start; }
+  .btns.two .pxb { white-space: nowrap; padding-left: 5px; padding-right: 5px; }
+  .card .pxb.primary { background: var(--orange); color: #fff; }
+  .card .pxb:hover { filter: brightness(1.04); }
+  .card .pxb:active { transform: translateY(2px); box-shadow: 0 -2px 0 0 var(--ink), 0 2px 0 0 var(--ink), -2px 0 0 0 var(--ink), 2px 0 0 0 var(--ink); }
+  .card .pxb .px-icon { margin: 0; }
+
+  /* dress up: Mochi itself, live, in each costume */
+  .closet { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .closet button { display: flex; flex-direction: column; align-items: center; padding: 2px 0 5px; background: var(--soft); }
+  .closet button:hover { background: #efe2d4; }
+  .closet button.on { background: #ffe3d5; box-shadow: 0 -2px 0 0 var(--orange), 0 2px 0 0 var(--orange), -2px 0 0 0 var(--orange), 2px 0 0 0 var(--orange); }
+  .closet .stage { width: 69px; height: 40px; overflow: hidden; display: flex; align-items: flex-end; justify-content: center; }
+  .closet .stage .critter { margin-bottom: -4px; }
+  .closet span { font-size: 14px; color: var(--muted); }
+  .closet button.on span { color: var(--ink); }
+
+  /* settings */
+  .set { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; min-height: 30px; }
+  .set + .set { background: repeating-linear-gradient(90deg, var(--line) 0 3px, transparent 3px 6px) top / 100% 2px no-repeat; }
+  .set .dot { display: inline-block; width: 6px; height: 6px; margin-right: 6px; background: var(--line); vertical-align: 2px; }
+  .set .dot.on { background: #4fae68; }
+  .switch { position: relative; width: 30px; height: 14px; background: #e3d5c6;
+    box-shadow: 0 -2px 0 0 var(--ink), 0 2px 0 0 var(--ink), -2px 0 0 0 var(--ink), 2px 0 0 0 var(--ink); }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; background: var(--paper);
+    box-shadow: 0 0 0 2px var(--ink); transition: left 0.12s steps(3, end); }
+  .switch.on { background: var(--orange); }
+  .switch.on::after { left: 18px; }
+  .seg { display: flex; box-shadow: 0 -2px 0 0 var(--ink), 0 2px 0 0 var(--ink), -2px 0 0 0 var(--ink), 2px 0 0 0 var(--ink); background: #f3e9dd; }
+  .seg button { padding: 1px 7px 3px; font-size: 15px; }
+  .seg button + button { box-shadow: -2px 0 0 0 var(--line); }
+  .seg button.on { background: var(--orange); color: #fff; }
+  .foot { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+  .foot .muted { flex: 1; font-size: 14px; }
+  .empty { padding: 8px 0 4px; text-align: center; }
+  .empty p { margin: 6px 0 12px; color: var(--muted); font-size: 15px; }
+  .empty .pxb { display: inline-flex; padding: 4px 14px 5px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+<div id="card" class="card px-bubble">
+  <header>
+    <div class="who"><div class="name">mochi</div><div class="mood" id="mood"></div></div>
+    <button class="ghost" id="eye"></button>
+  </header>
+  <nav id="tabs"></nav>
+  <div class="rule"></div>
+  <div id="body"></div>
+</div>
+</div>
+<script src="pet.js"></script>
+<script src="icons.js"></script>
+<script src="panel.js"></script>
+</body>
+</html>

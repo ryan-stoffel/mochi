@@ -479,6 +479,7 @@
     else if (t < R.landUntil) p = 'land';
     else if (t < R.dizzyUntil) p = 'dizzy';
     else if (R.scene) return;
+    else if (R.menu) p = 'tinker';                           // its panel is open
     else if (R.sys.call) p = 'shh';
     else if (cp) p = cp;                                     // acting out what Claude Code is doing
     else if (s.idle >= CFG.sleepIdle) p = isNight(t) ? 'nightSleep' : 'nap';
@@ -645,7 +646,7 @@
   const MOODS = {
     wizard: 'casting code spells', detective: 'investigating', chef: 'cooking lunch', nap: 'napping under a book', tv: 'turned into a screen',
     energy: 'holding an energy drink', sipEnergy: 'drinking an energy drink',
-    idle: 'chilling', content: 'happy', tired: 'sleepy', yawn: 'yawning', sip: 'sipping coffee', coffee: 'having coffee',
+    idle: 'chilling', tinker: 'at your service', content: 'happy', tired: 'sleepy', yawn: 'yawning', sip: 'sipping coffee', coffee: 'having coffee',
     offerCoffee: 'offering you coffee', water: 'wants you to drink water', sipWater: 'drinking water', walkAsk: 'wants to go for a walk',
     walk: 'out for a walk', stretch: 'stretching', lookfar: 'resting its eyes', cheer: 'cheering you on', wave: 'waving',
     type: 'typing along with you', focus: 'in the zone with you', read: 'reading', juggle: 'playing ball', plant: 'watering its plant',
@@ -664,6 +665,7 @@
       type: 'stats',
       mood: MOODS[view.current] || 'chilling',
       quiet: quiet(),
+      wearing: R.scene && COSTUMES[R.scene.pose] ? R.scene.pose : '',   // for the panel's Costumes tab
       stats: { active: fmt(S.day.active), sitting: fmt(S.sit), water: S.day.water, coffee: S.day.coffee, energy: S.day.energy || 0, breaks: S.day.breaks, walks: S.day.walks },
     });
   }
@@ -770,6 +772,13 @@
       if (ok) say('cheer', "connected! restart your claude code sessions and i'll follow along :sparkle:", 8, 'sparkle');
       else say('sweaty', `couldn't connect to claude code: ${why}`, 8);
     },
+    // the panel opened or closed: hold up a gear while it's open, and keep the bubble out of its way
+    menu(open) {
+      R.menu = !!open;
+      document.body.classList.toggle('menu', R.menu);
+      R.ambient = '';
+      ambient(Date.now(), R.last || IDLE);
+    },
     setWater(on) {
       waterOn = !!on;
       R.now = Date.now();
@@ -786,7 +795,12 @@
     setScale(s, w, h) { layout.w = w; layout.h = h; view.setScale(s); applyLayout(); placeBubble(); },
     action(name) {
       R.now = Date.now();
-      if (name.startsWith('wear:')) { const c = name.slice(5); if (COSTUMES[c]) play({ pose: c, say: COSTUMES[c], sayFor: 3, dur: 40 }); return; }
+      if (name.startsWith('wear:')) {
+        const c = name.slice(5);
+        if (COSTUMES[c]) play({ pose: c, say: COSTUMES[c], sayFor: 3, dur: 40 });
+        else if (c === 'none' && R.scene && COSTUMES[R.scene.pose]) endScene();   // take it off
+        return postStats();
+      }
       if (ACTIONS[name]) ACTIONS[name]();
       save();
     },
@@ -808,7 +822,7 @@
   // Clickable areas, so the rest of the window lets clicks through to whatever is behind it.
   function hotRects() {
     const out = [view.hitBox()];
-    if (!bubbleEl.hidden) { const b = bubbleEl.getBoundingClientRect(); out.push([b.left - 4, b.top - 4, b.width + 8, b.height + 14]); }
+    if (!bubbleEl.hidden && !R.menu) { const b = bubbleEl.getBoundingClientRect(); out.push([b.left - 4, b.top - 4, b.width + 8, b.height + 14]); }
     return out.map((a) => a.map(Math.round));
   }
   setInterval(() => { const h = JSON.stringify(hotRects()); if (h !== R.hotStr) { R.hotStr = h; post({ type: 'hot', rects: JSON.parse(h) }); } }, 150);

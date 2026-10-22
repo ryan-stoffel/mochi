@@ -180,7 +180,8 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
 
     var mood = "waking up"
     var stats: [String: Any] = [:]
-    let sheet = PanelController()
+    var wearing = ""
+    lazy var sheet = PanelController(webDir: webDir)
     var quiet = false
     var awaySince: Date?
     var activity: NSObjectProtocol?
@@ -221,8 +222,9 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         if roam { snapDown() }
         if let r = forcedRoam { roamLevel = r; nextRoam = CACurrentMediaTime() + 3; rlog("ledges:", ledges.map { "\($0.win):\(Int($0.x0))-\(Int($0.x1))@\(Int($0.y))" }) }
         buildPanel()
-        sheet.refresh = { [weak self] in self?.panelState() ?? PanelState() }
-        sheet.model.act = { [weak self] in self?.perform($0) }
+        sheet.state = { [weak self] in self?.panelState() ?? [:] }
+        sheet.act = { [weak self] in self?.perform($0) }
+        sheet.opened = { [weak self] in self?.js("mochi.menu(\($0))") }
         observeSystem()
         claude.onChange = { [weak self] in
             self?.pushClaude()
@@ -701,7 +703,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
 
     /// Mochi's own ideas, when it's standing around with nothing to do.
     func roamAround(_ m: CGPoint, _ now: Double) {
-        guard roamLevel > 0, !inside, !pressed else { return }
+        guard roamLevel > 0, !inside, !pressed, !sheet.isOpen else { return }
         // your pointer just stopped right above Mochi's head: jump for it
         let still = now - mouseMovedAt
         if still > 1.2, still < 6, now > pounceAt, abs(m.x - foot.x) < 10 * scale, m.y - foot.y > 14 * scale, m.y - foot.y < 14 * scale + 160 {
@@ -776,6 +778,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         case "hot":
             hot = (body["rects"] as? [[Double]] ?? []).compactMap { $0.count == 4 ? CGRect(x: $0[0], y: $0[1], width: $0[2], height: $0[3]) : nil }
         case "dragStart":
+            sheet.close()
             pressed = true
             dragMoved = false
             dragMouse = NSEvent.mouseLocation
@@ -785,14 +788,16 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
             if roamLevel == 0 && motion == .walk { settle(nil, landed: false) }
             if roamLevel >= 2 { nextRoam = min(nextRoam, CACurrentMediaTime() + 4) }
         case "menu":
-            sheet.show(at: NSEvent.mouseLocation)
+            sheet.show(x: foot.x, top: foot.y + 15 * scale, feet: foot.y)
             freshenUsage()
         case "save":
             if let s = body["data"] as? String { try? s.write(to: stateURL, atomically: true, encoding: .utf8) }
         case "stats":
             stats = body["stats"] as? [String: Any] ?? [:]
             mood = body["mood"] as? String ?? mood
+            wearing = body["wearing"] as? String ?? ""
             quiet = body["quiet"] as? Bool ?? false
+            if sheet.isOpen { sheet.update() }
         case "log":
             let msg = String(describing: body["msg"] ?? "")
             if ProcessInfo.processInfo.environment["MOCHI_TRACE"] != nil { rlog(msg) } else { NSLog("[mochi] %@", msg) }
@@ -844,36 +849,33 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
 
     // MARK: the panel
 
-    /// Everything the panel shows, as of now.
-    func panelState() -> PanelState {
-        var p = PanelState()
-        p.mood = mood
-        p.stats = stats
-        p.visible = panel.isVisible
-        p.quiet = quiet
-        p.roam = roam
-        p.appAware = appAware
-        p.emoji = emoji
-        p.water = waterReminders
-        p.login = SMAppService.mainApp.status == .enabled
-        p.scale = Double(scale)
-        p.follow = followClaude
-        p.narrate = narrateClaude
-        p.checkUsage = checkUsage
-        p.canCheck = ClaudeCode.binary != nil
-        p.connected = claudeLinked
-        p.listening = claude.listening
-        p.five = claude.current(claude.fiveHour)
-        p.week = claude.current(claude.weekly)
-        p.usageAt = claude.usageAt
-        if followClaude {
-            // the ones that need you, then the ones working, then the rest; by name within each, so rows don't jump around
-            let rank = { (s: ClaudeSession) in s.need != nil ? 0 : s.busy ? 1 : 2 }
-            p.sessions = claude.sessions.values.sorted { (rank($0), $0.project, $0.id) < (rank($1), $1.project, $1.id) }.prefix(8).map {
-                PanelSession(id: $0.id, project: $0.project, line: describe($0), needsYou: $0.need != nil, busy: $0.busy)
-            }
+    /// Everything the panel shows, as of now, for web/panel.js.
+    func panelState() -> [String: Any] {
+        func usage(_ w: UsageWindow?) -> Any {
+            guard let w else { return NSNull() }
+            return ["pct": w.pct, "resets": w.resets.map(PanelController.when) ?? ""]
         }
-        return p
+        var updated = ""
+        if let at = claude.usageAt {
+            let f = RelativeDateTimeFormatter()
+            f.unitsStyle = .short
+            updated = Date().timeIntervalSince(at) < 60 ? "updated just now" : "updated " + f.localizedString(for: at, relativeTo: Date())
+        }
+        // the ones that need you, then the ones working, then the rest; by name within each, so rows don't jump around
+        let rank = { (s: ClaudeSession) in s.need != nil ? 0 : s.busy ? 1 : 2 }
+        let sessions = !followClaude ? [] : claude.sessions.values.sorted { (rank($0), $0.project, $0.id) < (rank($1), $1.project, $1.id) }.prefix(8).map {
+            ["id": $0.id, "project": $0.project, "line": describe($0), "need": $0.need != nil, "busy": $0.busy] as [String: Any]
+        }
+        return [
+            "tab": defaults.string(forKey: "panelTab") ?? "claude", "mood": mood, "stats": stats, "wearing": wearing,
+            "visible": panel.isVisible, "quiet": quiet, "roam": roam, "appAware": appAware, "emoji": emoji, "water": waterReminders,
+            "login": SMAppService.mainApp.status == .enabled, "scale": Double(scale),
+            "follow": followClaude, "narrate": narrateClaude, "checkUsage": checkUsage, "canCheck": ClaudeCode.binary != nil,
+            "connected": claudeLinked, "listening": claude.listening, "port": Int(ClaudeCode.port),
+            "five": usage(claude.current(claude.fiveHour)), "week": usage(claude.current(claude.weekly)), "updated": updated,
+            "sessions": Array(sessions),
+            "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
+        ]
     }
 
     func perform(_ a: PanelAction) {
@@ -897,7 +899,6 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         case .refreshUsage: claude.checkUsage()
         case .focus(let id): sheet.close(); claude.focus(claude.sessions[id])
         case .quit: NSApp.terminate(nil)
-        case .close: sheet.close()
         }
         sheet.update()
     }

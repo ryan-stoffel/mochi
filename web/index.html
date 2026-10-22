@@ -12,6 +12,7 @@
   #bubbleWrap { position: absolute; z-index: 1; left: 0; right: 0; bottom: var(--bubble-above, 150px); display: flex; justify-content: center; pointer-events: none; }
   #bubbleWrap.below { bottom: auto; top: var(--bubble-below, 0px); }
   #bubble { pointer-events: auto; }
+  body.menu #bubbleWrap { visibility: hidden; }   /* the panel speaks for Mochi while it's open */
   html.render #stage { width: 276px; height: 204px; }
   html.render #pet { left: 0; bottom: 0; }
 </style>

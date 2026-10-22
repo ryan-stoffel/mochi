@@ -101,11 +101,12 @@ It also cheers you on every 20–35 minutes, throws confetti on each hour you've
 ## Using it
 
 - **Drag** Mochi anywhere and let go (or throw it). **Click** to boop it.
-- **Right-click Mochi** for its panel. It has four tabs:
+- **Right-click Mochi** for its panel: a big speech bubble over its head, while Mochi holds up a gear. Right-click again, click anywhere else or press Escape to close it. It has five tabs:
   - **Claude**: your 5-hour and weekly usage, and each Claude Code session with what it's doing (click one to switch to it). Connect Claude Code from here too.
   - **Today**: time at the computer, how long you've been sitting, water, coffee, energy drinks and breaks, and buttons to log them.
-  - **Play**: cheer me on, how am I doing, play ball, water the plant, **Sit on My Window**, **Go Explore**, and costumes.
-  - **Settings**: size, roaming (off keeps it exactly where you put it, no gravity), reacting to apps and calls, water reminders, emoji, quiet hour, open at login; Claude Code.
+  - **Play**: cheer me on, how am I doing, play ball, water the plant, **Sit on My Window**, **Go Explore**.
+  - **Dress up**: Mochi in every costume, live; click one and Mochi wears it for a little while, click it again to take it off.
+  - **Settings** (the gear): size, roaming (off keeps it exactly where you put it, no gravity), reacting to apps and calls, emoji, open at login; water reminders, quiet hour; Claude Code.
 
 ## Building
 
@@ -130,9 +131,10 @@ Re-render the PNGs in `renders/`: `Mochi.app/Contents/MacOS/Mochi --render <fold
 ## Files
 
 - `Sources/Claude.swift`: Claude Code: the local listener its hooks talk to, what each session is doing, usage limits, and connecting/disconnecting `~/.claude/settings.json`.
-- `Sources/Panel.swift`: the panel (SwiftUI, in a borderless window).
+- `Sources/Panel.swift`: the panel's window, which points at Mochi, and the messages to and from its page.
 - `Sources/main.swift`: the Mac app: transparent always-on-top window, how Mochi gets around (screens and window tops become ledges; walking, hopping, falling, riding), sensors (idle, sleep/wake, app in front, camera/mic, battery), the panel's actions, saving.
 - `web/pet.js`: the critter. Every pose and prop is drawn as pixel strings on a 46×34 canvas.
 - `web/brain.js`: decides what Mochi does and says, and how much it may roam right now (it stays put while you type).
 - `web/icons.js`: pixel icons that stand in for emoji in the speech bubble.
 - `web/pet.css`: pixel speech bubble. Font: Jersey 15 (OFL, `web/fonts/OFL.txt`).
+- `web/panel.html`, `web/panel.js`: the panel, drawn as a big speech bubble. Open `panel.html` in a browser to work on it with sample data (`?tab=closet` and so on).

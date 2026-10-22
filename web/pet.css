@@ -61,11 +61,11 @@
 
 /* pixel icons standing in for emoji (see icons.js) */
 .px-bubble .px-icon { display: inline-block; vertical-align: -1px; margin: 0 3px; image-rendering: pixelated; }
-.px-bubble button .px-icon { margin: 0 4px 0 0; vertical-align: 0; }
+.px-bubble .b-btns button .px-icon { margin: 0 4px 0 0; vertical-align: 0; }
 
 .px-bubble .b-btns { display: flex; flex-wrap: wrap; gap: 10px; margin: 9px 2px 3px; }
 .px-bubble .b-btns[hidden] { display: none; }
-.px-bubble button {
+.px-bubble .b-btns button {
   font: 400 16px/1 "Jersey 15", ui-monospace, Menlo, monospace;
   letter-spacing: 0.03em;
   color: var(--ink);
@@ -75,7 +75,7 @@
   cursor: pointer;
   box-shadow: 0 -2px 0 0 var(--ink), 0 2px 0 0 var(--ink), -2px 0 0 0 var(--ink), 2px 0 0 0 var(--ink), 0 4px 0 0 var(--shade);
 }
-.px-bubble button.primary { background: #e5714b; color: #fff; }
-.px-bubble button:hover { filter: brightness(1.05); }
-.px-bubble button:active { transform: translateY(2px); box-shadow: 0 -2px 0 0 var(--ink), 0 2px 0 0 var(--ink), -2px 0 0 0 var(--ink), 2px 0 0 0 var(--ink); }
-.px-bubble button:focus-visible { outline: 2px dashed #5a78e0; outline-offset: 3px; }
+.px-bubble .b-btns button.primary { background: #e5714b; color: #fff; }
+.px-bubble .b-btns button:hover { filter: brightness(1.05); }
+.px-bubble .b-btns button:active { transform: translateY(2px); box-shadow: 0 -2px 0 0 var(--ink), 0 2px 0 0 var(--ink), -2px 0 0 0 var(--ink), 2px 0 0 0 var(--ink); }
+.px-bubble .b-btns button:focus-visible { outline: 2px dashed #5a78e0; outline-offset: 3px; }

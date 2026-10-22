@@ -93,6 +93,8 @@
     waterTilt: { s: sp(['......VVV.', '.....V...V', '...BBBBBBV', 'BBBBBBBBB.', '...BBBBBB.', '...VVVVVV.']), grab: [9, 2] },
     pan: { s: sp(['....K.....K', 'GGGGKKKKKKK', '.....KKKKK.']), grab: [0, 1] },
     magnifier: { s: sp(['.ggg.', 'gAAwg', 'gAAAg', 'gAAAg', '.ggg.', 'h....', 'h....']), grab: [0, 6] },
+    // a cog, held up while its panel is open
+    gear: { s: sp(['...GGG...', '.GGGqGGG.', '.GqqqqqG.', 'GGqqGqqGG', 'GqqG.GqqG', 'GGqqGqqGG', '.GqqqqqG.', '.GGGqGGG.', '...GGG...']), grab: [0, 7] },
     popcorn: { s: sp(['.OwOzO.', 'OzOwOwO', 'RwRwRwR', 'RwRwRwR', '.RwRwR.', '.RwRwR.']), grab: [6, 3] },
     duck: { s: sp(['..zz...', '.zezz..', 'ZZzzz..', '..zzzzz', '.zzzzzz', '..zzzz.']), grab: [6, 4] },
     // Claude Code's work: a checklist (tests, the plan) and a parcel (a commit going out)
@@ -209,6 +211,7 @@
     focus:       { eyes: 'dash', front: 'laptop', armR: 'tap', acc: ['headphones'], anim: 'type nod', fx: ['note', 16] },
     wizard:      { hat: 'wizard', acc: ['beard'], heldR: 'staff', armR: 'out', anim: 'wizard', fx: ['sparkle', 10] },
     detective:   { hat: 'detective', heldR: 'magnifier', armR: 'holdUp', anim: 'detective' },
+    tinker:      { eyes: 'happy', heldR: 'gear', armR: 'up', anim: 'tinker' },   // its panel is open
     chef:        { eyes: 'happy', hat: 'chef', heldR: 'pan', armR: 'hold', anim: 'chef', blush: true },
     read:        { front: 'book', armL: 'none', armR: 'none', look: [0, 1], anim: 'read' },
     juggle:      { anim: 'juggle' },
@@ -337,6 +340,7 @@
       st.heldRDy = c === 0 || c === 1 ? -1 : 0;
       st.sizzle = c >= 12;
     },
+    tinker(st, f) { st.bob = f % 30 >= 15 ? 1 : 0; st.heldRDy = f % 16 < 8 ? 0 : -1; },
     tv(st, f) { st.bob = f % 30 >= 15 ? 1 : 0; st.tvFace = f % 50 > 46 ? 'blink' : f % 120 > 100 ? 'sad' : 'smile'; },
     stroll(st, f, pf, v) {
       const step = (f >> 1) % 4;

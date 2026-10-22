@@ -31,6 +31,9 @@
     cross: ['c....c', 'cc..cc', '.cccc.', '.cccc.', 'cc..cc', 'c....c'],
     hand: ['.b.b.b.', '.b.b.b.', '.bbbbbb', 'bbbbbbb', '.bbbbb.', '..bbb..'],
     bang: ['RR', 'RR', 'RR', 'RR', '..', 'RR'],
+    gear: ['..GGG..', '.GGqGG.', 'GGq.qGG', 'Gq...qG', 'GGq.qGG', '.GGqGG.', '..GGG..'],
+    window: ['GGGGGGGG', 'GRGzGMGG', 'GwwwwwwG', 'GwwwwwwG', 'GwwwwwwG', 'GGGGGGGG'],
+    eye: ['..kkk..', '.kwwwk.', 'kwwkwwk', '.kwwwk.', '..kkk..'],
   };
 
   // which icon stands in for which emoji (anything not listed is dropped)

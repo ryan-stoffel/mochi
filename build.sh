@@ -10,7 +10,7 @@ rm -rf build
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 for arch in arm64 x86_64; do
   swiftc -swift-version 5 -O -target $arch-apple-macos13.0 Sources/*.swift \
-    -o build/Mochi-$arch -framework AppKit -framework WebKit -framework ServiceManagement -framework Network -framework JavaScriptCore -framework SwiftUI
+    -o build/Mochi-$arch -framework AppKit -framework WebKit -framework ServiceManagement -framework Network -framework JavaScriptCore
 done
 lipo -create build/Mochi-arm64 build/Mochi-x86_64 -output "$APP/Contents/MacOS/Mochi"
 rm build/Mochi-arm64 build/Mochi-x86_64
