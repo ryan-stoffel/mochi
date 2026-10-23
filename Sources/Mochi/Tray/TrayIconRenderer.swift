@@ -1,58 +1,61 @@
 import AppKit
 import MochiCore
 
-/// Draws the menu bar icon: the selected provider's mini, pixel for pixel the critter on screen
-/// (`TraySprites`, made from pet.js), with its usage beside it in Jersey 15.
-///
-/// Not a template image: the critter's colours are the point. The number takes the bar's own text colour until
-/// usage gets high, then turns amber (70%) and red (90%), the same tiers as the dropdown's meters.
+/// Draws the menu bar icon: the selected provider's critter as a pixel silhouette, with its usage beside it in the
+/// menu bar's own font. A template image, so macOS tints it like every other icon up there, light bar or dark.
 enum TrayIconRenderer {
 
     enum Mood { case fine, busy, error }
 
-    /// The bar's real height. Not `NSStatusBar.system.thickness`, which reports 22 on a notched MacBook whose
-    /// bar is really 32pt; `NotchGeometry` resolves the true one.
-    private static var slotHeight: CGFloat { NotchGeometry.info().reservedTopHeight }
-
-    /// How tall the critter stands, in points; small critters get chunkier pixels to match the tall ones.
+    /// The critter stands at most about this tall, in whole device pixels; short critters get chunkier pixels.
     private static let critterHeight: CGFloat = 18
 
-    static func icon(provider: String, pct: Int?, mood: Mood, darkBar: Bool) -> NSImage {
-        let sprite = PixelCritter.image(provider, mood: mood)
-        // Whole device pixels on a 2x screen: 1, 1.5, 2...
-        let px = max(1, ((critterHeight / CGFloat(sprite.height)) * 2).rounded(.down) / 2)
-        let critter = NSSize(width: CGFloat(sprite.width) * px, height: CGFloat(sprite.height) * px)
+    /// `pct` nil shows "–" while there's nothing to show yet, or "!" when the provider is failing.
+    static func icon(provider: String, pct: Int?, mood: Mood) -> NSImage {
+        let rows = silhouette(provider, mood: mood)
+        let cols = rows.first?.count ?? 0
+        // Whole device pixels on a 2x screen (1, 1.5, 2...), and never under 1pt so tall critters stay legible.
+        let px = max(1, (critterHeight * 2 / CGFloat(max(rows.count, 1))).rounded(.down) / 2)
+        let critter = NSSize(width: CGFloat(cols) * px, height: CGFloat(rows.count) * px)
 
-        let label = pct.map { "\($0)%" } ?? (mood == .error ? "!" : "")
-        let font = PixelFont.ns(21)
-        let ink: NSColor
-        switch pct ?? 0 {
-        case 90...: ink = NSColor(hex: darkBar ? "#FF8A7A" : "#C8382B")
-        case 70...: ink = NSColor(hex: darkBar ? "#F2C14E" : "#A86A00")
-        default: ink = darkBar ? .white : NSColor(hex: "#1F1A1C")
-        }
-        let text = NSAttributedString(string: label, attributes: [.font: font, .foregroundColor: ink])
-        let gap: CGFloat = label.isEmpty ? 0 : 4
-        let size = NSSize(width: (critter.width + gap + text.size().width).rounded(.up), height: slotHeight)
+        let label = pct.map { "\($0)%" } ?? (mood == .error ? "!" : "–")
+        let font = menuBarFont
+        let text = NSAttributedString(string: label, attributes: [.font: font, .foregroundColor: NSColor.black])
+        let gap: CGFloat = 4
+        let height = NSStatusBar.system.thickness
+        let size = NSSize(width: (critter.width + gap + text.size().width).rounded(.up), height: height)
 
-        let image = NSImage(size: size, flipped: true) { _ in
-            let top = ((size.height - critter.height) / 2).rounded()
-            if let ctx = NSGraphicsContext.current?.cgContext {
-                ctx.saveGState()
-                ctx.interpolationQuality = .none
-                // The image is drawn upright in a flipped context by flipping it back around its own rect.
-                ctx.translateBy(x: 0, y: top + critter.height)
-                ctx.scaleBy(x: 1, y: -1)
-                ctx.draw(sprite, in: CGRect(origin: .zero, size: critter))
-                ctx.restoreGState()
+        let image = NSImage(size: size, flipped: false) { _ in
+            NSColor.black.setFill()
+            let bottom = ((height - critter.height) / 2 * 2).rounded() / 2
+            for (j, row) in rows.enumerated() {
+                for (i, ch) in row.enumerated() where ch == "#" {
+                    NSRect(x: CGFloat(i) * px, y: bottom + CGFloat(rows.count - 1 - j) * px, width: px, height: px).fill()
+                }
             }
-            // Sit the digits on the critter's feet line, like it's standing next to them.
-            let baseline = top + critter.height - 1
-            text.draw(at: NSPoint(x: critter.width + gap, y: baseline - font.ascender))
+            // Centre the digits' cap height on the bar, like the clock and the battery percentage.
+            let baseline = ((height - font.capHeight) / 2 * 2).rounded() / 2
+            text.draw(at: NSPoint(x: critter.width + gap, y: baseline + font.descender))
             return true
         }
-        image.isTemplate = false
+        image.isTemplate = true
         return image
+    }
+
+    /// The menu bar's font with digits that don't jiggle as the number changes.
+    private static let menuBarFont: NSFont = {
+        let base = NSFont.menuBarFont(ofSize: 0)
+        let descriptor = base.fontDescriptor.addingAttributes([.featureSettings: [[
+            NSFontDescriptor.FeatureKey.typeIdentifier: kNumberSpacingType,
+            NSFontDescriptor.FeatureKey.selectorIdentifier: kMonospacedNumbersSelector,
+        ]]])
+        return NSFont(descriptor: descriptor, size: base.pointSize) ?? base
+    }()
+
+    /// The critter as `#` (filled) and `.` (clear) rows, its eyes (or face screen) punched out so it still has a face
+    /// in one colour. Drawn by scripts/tray-sprites.js from the critter itself.
+    static func silhouette(_ provider: String, mood: Mood) -> [String] {
+        (TraySprites.all[provider] ?? TraySprites.all["claude"]!).template
     }
 }
 

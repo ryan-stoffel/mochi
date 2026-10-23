@@ -1,6 +1,7 @@
 /* The menu bar dropdown (menu.html): your plan usage for each provider, in Mochi's panel. The app hands it one state
-   object (see StatusItemController.state) through panel.show / panel.update, and panel.place points the tail up at
-   the menu bar icon. Clicks go back as {type: 'act', name, arg}. Also opens in a browser with sample data. */
+   object (see UsageMenu.state) through panel.show / panel.update, and panel.place points the tail up at the menu bar
+   icon. panel.show draws before the window appears and returns the size it drew at. Clicks go back as
+   {type: 'act', name, arg}. Also opens in a browser with sample data (?provider=, ?details, ?refreshing, ?stale). */
 (() => {
   'use strict';
   const native = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.panel;
@@ -37,7 +38,8 @@
     return [
       h('h2', {}, 'history', h('span', { class: 'end' }, h('span', { class: 'seg' }, [['session', 'day'], ['weekly', 'week']].map(([m, l]) =>
         h('button', { class: hist.mode === m ? 'on' : '', onclick: () => act('chart', m) }, l))))),
-      h('div', { class: 'chart' }, bars.map((v) => h('i', { class: v == null ? 'none' : '', style: v == null ? '' : `height:${Math.max(4, v)}%;--fill:${tier(v)}`, title: v == null ? '' : v + '%' }))),
+      bars.every((v) => v == null) ? h('div', { class: 'chart empty-chart small muted' }, 'no history yet. it fills in as mochi checks.')
+        : h('div', { class: 'chart' }, bars.map((v) => h('i', { class: v == null ? 'none' : '', style: v == null ? '' : `height:${Math.max(4, v)}%;--fill:${tier(v)}`, title: v == null ? '' : v + '%' }))),
       h('div', { class: 'chart-axis small muted' }, h('span', {}, hist.mode === 'weekly' ? '7 days ago' : '24h ago'), h('span', {}, 'now')),
     ];
   }
@@ -45,7 +47,9 @@
   function body() {
     const b = S.body || { kind: 'empty', title: '...' };
     if (b.kind === 'empty') {
-      return h('div', { class: 'empty' + (b.error ? ' error' : '') }, h('p', {}, b.title),
+      // "checking..." and "fetching..." titles get animated dots instead of static ones
+      const waiting = /\.\.\.$/.test(b.title);
+      return h('div', { class: 'empty' + (b.error ? ' error' : '') + (waiting ? ' waiting' : '') }, h('p', {}, waiting ? b.title.slice(0, -3) : b.title),
         b.hint && h('div', { class: 'hint' }, b.hint),
         b.action && h('button', { class: 'pxb primary', onclick: () => act(b.action.name, b.action.arg) }, b.action.label));
     }
@@ -85,19 +89,30 @@
     }
     $('name').textContent = (L.name || '').toLowerCase();
     $('mood').textContent = S.mood || '';
+    $('mood').classList.toggle('stale', !!S.stale);
+    $('mood').title = S.stale ? "these numbers haven't refreshed in a while" : '';
     $('refresh').classList.toggle('spin', !!S.refreshing);
     $('tabs').replaceChildren(...(S.tabs || []).map((t) => h('button', { class: t.id === S.provider ? 'on' : '', title: t.title || '', onclick: () => { if (t.id !== S.provider) { details = false; act('select', t.id); } } },
       (look(t.id).name || t.id).toLowerCase(), h('span', { class: 'tab-dot ' + (t.dot || '') }))));
     $('tabs').hidden = (S.tabs || []).length < 2;
     $('body').replaceChildren(...[body()].flat().filter(Boolean));
     $('body').classList.toggle('scroll', details);
-    $('version').textContent = S.version ? 'ai usage ' + S.version : '';
+    $('version').textContent = S.version ? 'mochi ' + S.version : 'mochi';
   }
 
   icon($('refresh'), 'refresh').addEventListener('click', () => act('refresh'));
-  icon($('gear'), 'gear').addEventListener('click', () => act('settings'));
+  $('gear').addEventListener('click', () => act('settings'));
   $('quit').addEventListener('click', () => act('quit'));
-  addEventListener('keydown', (e) => { if (e.key === 'Escape') post({ type: 'close' }); });
+  addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') return post({ type: 'close' });
+    // ← → walk the tabs, like a segmented control
+    const ids = (S.tabs || []).map((t) => t.id), i = ids.indexOf(S.provider);
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && ids.length > 1 && i >= 0) {
+      e.preventDefault();
+      details = false;
+      act('select', ids[(i + (e.key === 'ArrowRight' ? 1 : ids.length - 1)) % ids.length]);
+    }
+  });
   const wrap = $('wrap');
   new ResizeObserver(() => post({ type: 'size', w: wrap.offsetWidth, h: wrap.offsetHeight })).observe(wrap);
 
@@ -112,6 +127,7 @@
       card.classList.remove('pop');
       void card.offsetWidth;
       card.classList.add('pop');
+      return { w: wrap.offsetWidth, h: wrap.offsetHeight };
     },
     update(state) { S = state; render(); },
     place(tail, below) {
@@ -131,12 +147,15 @@
           skills: [{ name: 'frontend-design', pct: 21 }, { name: 'pdf', pct: 8 }], mcp: [{ name: 'linear', pct: 4 }],
           stats: [['favorite model', 'opus 5.5'], ['total tokens', '48.2m'], ['sessions', '312'], ['active days', '61/90'], ['longest streak', '19 days'], ['current streak', '6 days']],
           fact: "you've written about 3 novels' worth of tokens." } },
-      codex: { kind: 'gauges', banner: 'offline: showing last known usage', gauges: [{ label: '5h', pct: 91, reset: '4:10 pm' }, { label: 'weekly', pct: 46, reset: 'fri' }] },
-      antigravity: { kind: 'empty', title: "antigravity isn't installed.", hint: 'brew install --cask antigravity-cli', action: { label: 'install', name: 'install', arg: 'antigravity' } },
-      cursor: { kind: 'empty', title: 'cursor is installed, but not signed in yet.', hint: 'run cursor-agent, then /usage.', action: { label: 'log in', name: 'login', arg: 'cursor' } },
+      codex: { kind: 'gauges', banner: 'offline: showing last known usage', gauges: [{ label: '5h', pct: 91, reset: '4:10 pm' }, { label: 'weekly', pct: 46, reset: 'fri' }],
+        details: { history: { mode: 'session', bars: Array(24).fill(null) } } },
+      antigravity: q.has('checking') ? { kind: 'empty', title: 'checking antigravity...' }
+        : { kind: 'empty', title: "antigravity isn't installed.", hint: 'brew install --cask antigravity-cli', action: { label: 'install', name: 'install', arg: 'antigravity' } },
+      cursor: q.has('error') ? { kind: 'empty', title: 'could not read cursor usage.', hint: 'this usually clears on the next refresh.', error: true, action: { label: 'retry', name: 'retry', arg: 'cursor' } }
+        : { kind: 'empty', title: 'cursor is installed, but not signed in yet.', hint: 'run cursor-agent, then /usage.', action: { label: 'log in', name: 'login', arg: 'cursor' } },
     };
     panel.show({
-      provider: p, mood: 'updated 2m ago', refreshing: q.has('refreshing'), version: '1.3',
+      provider: p, mood: q.has('stale') ? 'updated 47m ago' : 'updated 2m ago', stale: q.has('stale'), refreshing: q.has('refreshing'), version: '1.4',
       tabs: [{ id: 'claude', dot: 'warn' }, { id: 'antigravity', dot: '' }, { id: 'codex', dot: 'bad' }, { id: 'cursor', dot: '' }],
       body: sample[p],
     }, true);

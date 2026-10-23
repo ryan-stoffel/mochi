@@ -1,42 +1,91 @@
 import AppKit
 import MochiCore
 
-/// The Settings window: settings.html in a `PageWindow`, on Mochi's paper. Where usage shows, which providers
-/// it reads, the mini and its alerts, and the general switches.
+/// The Settings window: a native settings window (title bar, toolbar of panes) with each pane drawn by settings.html
+/// on Mochi's paper. General · Mochi · Usage · Agents · Alerts · About. The window fits each pane's height.
 @MainActor
-final class SettingsPage {
+final class SettingsPage: NSObject, NSToolbarDelegate {
 
     private let usage: UsageService
-    private let minis: MinisController
+    private let agents: SettingsAgents
+    private weak var pet: PetControls?
     private let onDisplayModeChange: (DisplayMode) -> Void
     private let onRunWizard: () -> Void
     private var page: PageWindow?
+    private var pane = UserDefaults.standard.string(forKey: "settingsPane") ?? "general"
     /// Said under the hook rows after connecting one, e.g. that Codex wants the hook approved.
     private var note: String?
     private var error: String?
 
-    init(usage: UsageService, minis: MinisController,
+    private static let panes: [(id: String, title: String, symbol: String)] = [
+        ("general", "General", "gearshape"), ("mochi", "Mochi", "pawprint"), ("usage", "Usage", "chart.bar"),
+        ("agents", "Agents", "sparkles"), ("alerts", "Alerts", "bell"), ("about", "About", "info.circle"),
+    ]
+
+    init(usage: UsageService, agents: SettingsAgents, pet: PetControls?,
          onDisplayModeChange: @escaping (DisplayMode) -> Void, onRunWizard: @escaping () -> Void) {
         self.usage = usage
-        self.minis = minis
+        self.agents = agents
+        self.pet = pet
         self.onDisplayModeChange = onDisplayModeChange
         self.onRunWizard = onRunWizard
     }
 
     func show() {
         if let page { return page.show() }
-        let p = PageWindow(page: "settings.html", title: "AI Usage Settings", size: NSSize(width: 460, height: 700))
+        if !Self.panes.contains(where: { $0.id == pane }) { pane = "general" }
+        let p = PageWindow(page: "settings.html", title: "Mochi Settings", size: NSSize(width: 540, height: 420), fullSize: false)
+        p.fitsContent = true
         p.state = { [weak self] in self?.state() ?? [:] }
         p.act = { [weak self] name, arg in self?.act(name, arg) }
+        let toolbar = NSToolbar(identifier: "settings")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconAndLabel
+        toolbar.allowsUserCustomization = false
+        p.window.toolbar = toolbar
+        p.window.toolbarStyle = .preference
+        toolbar.selectedItemIdentifier = .init(pane)
+        p.window.title = title(pane)
         page = p
         p.show()
+    }
+
+    private func title(_ id: String) -> String { Self.panes.first { $0.id == id }?.title ?? "Settings" }
+
+    // MARK: - Toolbar
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { Self.panes.map { .init($0.id) } }
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { Self.panes.map { .init($0.id) } }
+    func toolbarSelectableItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] { Self.panes.map { .init($0.id) } }
+
+    func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier id: NSToolbarItem.Identifier,
+                 willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        guard let p = Self.panes.first(where: { $0.id == id.rawValue }) else { return nil }
+        let item = NSToolbarItem(itemIdentifier: id)
+        item.label = p.title
+        item.image = NSImage(systemSymbolName: p.symbol, accessibilityDescription: p.title)
+        item.target = self
+        item.action = #selector(pick(_:))
+        return item
+    }
+
+    @objc private func pick(_ item: NSToolbarItem) { select(item.itemIdentifier.rawValue) }
+
+    private func select(_ id: String) {
+        guard Self.panes.contains(where: { $0.id == id }), id != pane else { return }
+        pane = id
+        UserDefaults.standard.set(id, forKey: "settingsPane")
+        page?.window.toolbar?.selectedItemIdentifier = .init(id)
+        page?.window.title = title(id)
+        page?.update()
     }
 
     // MARK: - State
 
     private func state() -> [String: Any] {
-        let c = minis.config
-        return [
+        let c = agents.config
+        var s: [String: Any] = [
+            "pane": pane,
             "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
             "displayMode": Settings.shared.displayMode.rawValue,
             "hasNotch": NotchGeometry.hasHardwareNotch,
@@ -45,20 +94,18 @@ final class SettingsPage {
                 let on = Settings.shared.isEnabled(p.id)
                 let status = usage.status(p.id)
                 var row: [String: Any] = ["id": p.id, "name": p.name.lowercased(), "enabled": on,
-                                          "status": statusText(status, on: on), "tone": tone(status, on: on)]
+                                          "status": statusText(p, status, on: on), "tone": tone(status, on: on)]
                 if on, let a = primaryAction(p, status) { row["action"] = a.title }
                 return row
             },
-            "minis": [
-                "enabled": c.enabled, "listening": minis.listening, "port": Int(HookServer.port), "provider": c.provider,
+            "agents": [
+                "listening": agents.listening, "port": Int(Agents.port),
                 "hooks": Provider.all.map { p -> [String: Any] in
-                    ["id": p.id, "name": p.name.lowercased(), "installed": minis.installed[p.id] == true,
-                     "canInstall": HookInstaller.canInstall(p.id), "alertsOn": c.providerOn(p.id),
-                     "live": minis.sessions.filter { $0.provider == p.id }.count]
+                    ["id": p.id, "name": p.name.lowercased(), "installed": agents.installed[p.id] == true,
+                     "canInstall": agents.canInstall(p.id), "alertsOn": c.providerOn(p.id),
+                     "live": agents.sessions.filter { $0.provider == p.id }.count]
                 },
-                "note": note ?? "", "error": error ?? "",
-                "speech": c.speech.rawValue, "animation": c.animation.rawValue, "motion": c.motion.rawValue,
-                "placement": c.placement.rawValue, "scale": c.scale, "idleMinutes": c.idleMinutes,
+                "note": note ?? "", "error": error ?? "", "idleMinutes": c.idleMinutes,
                 "alerts": Dictionary(uniqueKeysWithValues: AlertKind.allCases.map {
                     ($0.rawValue, ["on": c.alerts($0), "sound": c.sound($0)] as [String: Any])
                 }),
@@ -66,16 +113,20 @@ final class SettingsPage {
                 "sounds": MinisConfig.soundChoices,
             ] as [String: Any],
         ]
+        if let pet { s["pet"] = pet.petState() }
+        return s
     }
 
-    private func statusText(_ status: ProviderStatus, on: Bool) -> String {
+    private func statusText(_ p: Provider, _ status: ProviderStatus, on: Bool) -> String {
         guard on else { return "turned off." }
         switch status.state {
         case .checking: return "checking…"
-        case .notInstalled: return "not installed."
-        case .installed: return "installed, not signed in."
-        case .loggedIn: return status.message.map { "signed in (\($0.lowercased()))" } ?? "signed in."
-        case .error(let message): return message.lowercased()
+        case .notInstalled: return status.message?.lowercased() ?? "not installed."
+        case .installed: return status.message?.lowercased() ?? "installed, not signed in."
+        case .loggedIn:
+            if let m = status.message { return "signed in (\(m.lowercased()))" }
+            return usage.primaryPct(p.id).map { "signed in. \($0)% used." } ?? "signed in."
+        case .error(let message): return (status.message ?? message).lowercased()
         case .disabled: return "turned off."
         }
     }
@@ -109,6 +160,8 @@ final class SettingsPage {
     private func act(_ name: String, _ arg: String?) {
         let (key, value) = Self.split(arg)
         switch name {
+        case "pane":
+            select(arg ?? "")
         case "displayMode":
             guard let mode = DisplayMode(rawValue: arg ?? ""), mode == .tray || NotchGeometry.hasHardwareNotch else { return }
             Settings.shared.displayMode = mode
@@ -120,27 +173,31 @@ final class SettingsPage {
             guard let p = Provider.byID(arg ?? ""), let a = primaryAction(p, usage.status(p.id)) else { return }
             a.run()
         case "hook":
-            guard Provider.byID(key) != nil else { return }
+            guard let p = Provider.byID(key) else { return }
             let on = value == "true"
             do {
-                try minis.setInstalled(key, on)
+                try agents.setInstalled(key, on)
                 error = nil
-                note = on ? HookInstaller.targets[key]?.followUp.map { "\(Provider.byID(key)!.name.lowercased()): \($0.lowercased())" } : nil
+                note = on ? agents.followUp(key).map { "\(p.name.lowercased()): \($0.lowercased())" } : nil
             } catch {
                 self.error = error.localizedDescription
             }
         case "test":
-            if Provider.byID(arg ?? "") != nil { minis.test(arg!) }
+            if Provider.byID(arg ?? "") != nil { agents.test(arg!) }
         case "preview":
-            if let kind = AlertKind(rawValue: arg ?? "") { minis.previewSound(kind) }
+            if let kind = AlertKind(rawValue: arg ?? "") { agents.previewSound(kind) }
         case "set":
             set(key, value)
+        case "pet":
+            pet?.setPet(key, value)
         case "openNotifications":
-            let id = Bundle.main.bundleIdentifier ?? "com.eli.aiusage"
+            let id = Bundle.main.bundleIdentifier ?? "com.joey.mochi"
             if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)") {
                 NSWorkspace.shared.open(url)
             }
         case "login":
+            // the pet owns open-at-login when it's there; this is for the usage side on its own
+            if let pet { pet.setPet("login", arg ?? "false"); break }
             let on = arg == "true"
             Settings.shared.launchAtLogin = on
             LoginItem.setEnabled(on)
@@ -155,17 +212,10 @@ final class SettingsPage {
         }
     }
 
-    /// One of the mini's settings, as `key=value`; anything unrecognised is ignored.
+    /// One of the agents' settings, as `key=value`; anything unrecognised is ignored.
     private func set(_ key: String, _ value: String) {
-        var c = minis.config
+        var c = agents.config
         switch key {
-        case "enabled": c.enabled = value == "true"
-        case "provider": if Provider.byID(value) != nil { c.provider = value }
-        case "speech": if let v = MiniSpeech(rawValue: value) { c.speech = v }
-        case "animation": if let v = MiniAnimation(rawValue: value) { c.animation = v }
-        case "motion": if let v = MiniMotion(rawValue: value) { c.motion = v }
-        case "placement": if let v = MiniPlacement(rawValue: value) { c.placement = v }
-        case "scale": if let v = Double(value), (1.5...4).contains(v) { c.scale = v }
         case "idleMinutes": if let v = Double(value), v > 0 { c.idleMinutes = v }
         case "repeatSeconds": if let v = Double(value), v >= 0 { c.repeatSeconds = v }
         case "volume": if let v = Double(value), (0...1).contains(v) { c.volume = v }
@@ -180,7 +230,7 @@ final class SettingsPage {
             default: return
             }
         }
-        minis.config = c
+        agents.config = c
     }
 
     private static func split(_ arg: String?) -> (String, String) {

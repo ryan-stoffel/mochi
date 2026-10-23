@@ -1,13 +1,12 @@
 import AppKit
 import Combine
-import SwiftUI
 import MochiCore
 
 /// Owns the menu-bar status item — the tray shell.
 ///
-/// The icon is the selected provider's mini with its usage beside it (`TrayIconRenderer`). Clicking it opens the
-/// `UsageMenu` dropdown hanging from the menu bar. One of the two shells `AppDelegate` switches between; it holds no
-/// data of its own and observes the shared `UsageService`.
+/// The icon is the selected provider's critter with its usage beside it (`TrayIconRenderer`), monochrome like the
+/// rest of the menu bar. Clicking it opens the `UsageMenu` dropdown hanging from the bar. One of the two shells
+/// `UsageShell` switches between; it holds no data of its own and observes the shared `UsageService`.
 @MainActor
 final class StatusItemController {
 
@@ -28,27 +27,32 @@ final class StatusItemController {
         guard statusItem == nil else { return }
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.target = self
-        item.button?.action = #selector(statusItemClicked)
-        item.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
         statusItem = item
+        if let button = item.button {
+            // VoiceOver presses the button itself; the mouse goes to the catcher on top of it, so the button never
+            // gets a mouse-down and never draws the pressed capsule.
+            button.target = self
+            button.action = #selector(open)
+            let catcher = ClickCatcher(frame: button.bounds)
+            catcher.autoresizingMask = [.width, .height]
+            catcher.onClick = { [weak self] in self?.open() }
+            button.addSubview(catcher)
+        }
 
-        // Redraw the icon whenever anything it reflects changes. Cheap enough
-        // to just recompute on every publish rather than diffing.
+        // Redraw the icon whenever anything it reflects changes. Cheap enough to recompute on every publish.
         usage.objectWillChange
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
-                self?.updateIcon()
-                self?.menu.update()
+                // objectWillChange fires before the new values land; read them on the next turn.
+                DispatchQueue.main.async {
+                    self?.updateIcon()
+                    self?.menu.update()
+                }
             }
-            .store(in: &cancellables)
-        // The menu bar's text colour follows the wallpaper and light/dark mode.
-        DistributedNotificationCenter.default().publisher(for: Notification.Name("AppleInterfaceThemeChangedNotification"))
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.updateIcon() }
             .store(in: &cancellables)
 
         menu.onSelect = { [weak self] in self?.updateIcon() }
+        menu.warm()
         updateIcon()
     }
 
@@ -66,11 +70,15 @@ final class StatusItemController {
     private func updateIcon() {
         guard let button = statusItem?.button else { return }
         let provider = UsageMenu.selected
+        let status = usage.status(provider.id)
         let mood: TrayIconRenderer.Mood
-        if usage.isRefreshing { mood = .busy } else if case .error = usage.status(provider.id).state { mood = .error } else { mood = .fine }
-        let dark = button.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        button.image = TrayIconRenderer.icon(provider: provider.id, pct: usage.primaryPct(provider.id), mood: mood, darkBar: dark)
-        button.toolTip = tooltip(for: provider, status: usage.status(provider.id))
+        if usage.isRefreshing { mood = .busy } else if case .error = status.state { mood = .error } else { mood = .fine }
+        let pct = usage.primaryPct(provider.id)
+        button.image = TrayIconRenderer.icon(provider: provider.id, pct: pct, mood: mood)
+        let tip = tooltip(for: provider, status: status)
+        button.toolTip = tip
+        button.setAccessibilityLabel(pct.map { "Mochi, \(provider.name) \($0) percent used" } ?? "Mochi")
+        button.setAccessibilityHelp(tip)
     }
 
     private func tooltip(for provider: Provider, status: ProviderStatus) -> String {
@@ -78,19 +86,19 @@ final class StatusItemController {
         case "claude":
             let d = usage.claude
             guard d.session != nil || d.weekly != nil else {
-                return d.error.map { "AI Usage — \($0)" } ?? "AI Usage — fetching…"
+                return d.error.map { "Mochi — \($0)" } ?? "Mochi — checking Claude…"
             }
-            let base = "Claude — Session: \(Format.pct(d.session))%  Weekly: \(Format.pct(d.weekly))%"
+            let base = "Claude — session \(Format.pct(d.session))%, week \(Format.pct(d.weekly))%"
             return d.error.map { "\(base) (\($0))" } ?? base
         case "antigravity":
             guard status.state == .loggedIn, let g = usage.antigravity else { break }
-            return "Antigravity — 5hr: \(Format.pct(g.fiveHourPct))%  Weekly: \(Format.pct(g.weeklyPct))%"
+            return "Antigravity — 5 hours \(Format.pct(g.fiveHourPct))%, week \(Format.pct(g.weeklyPct))%"
         case "codex":
             guard status.state == .loggedIn, let c = usage.codex else { break }
-            return "Codex (\(c.plan ?? "?")) — \(Format.pct(c.primaryPct))%"
+            return "Codex\(c.plan.map { " (\($0))" } ?? "") — \(Format.pct(c.primaryPct))%"
         case "cursor":
             guard status.state == .loggedIn, let c = usage.cursor else { break }
-            return "Cursor (\(c.plan ?? "?")) — \(Format.pct(c.primaryPct))%"
+            return "Cursor\(c.plan.map { " (\($0))" } ?? "") — \(Format.pct(c.primaryPct))%"
         default:
             break
         }
@@ -99,10 +107,19 @@ final class StatusItemController {
 
     // MARK: - Dropdown
 
-    /// Left or right click: the dropdown has everything the old right-click menu did.
-    @objc private func statusItemClicked() {
+    /// Either button: the dropdown has everything a right-click menu would.
+    @objc private func open() {
         guard let button = statusItem?.button, let window = button.window else { return }
         let r = window.convertToScreen(button.convert(button.bounds, to: nil))
         menu.show(x: r.midX, top: r.maxY, feet: r.minY - 2)
     }
+}
+
+/// Sits over the status item's button and takes its clicks on mouse-down, like a native menu opening.
+private final class ClickCatcher: NSView {
+    var onClick: () -> Void = {}
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func mouseDown(with event: NSEvent) { onClick() }
+    override func rightMouseDown(with event: NSEvent) { onClick() }
+    override func otherMouseDown(with event: NSEvent) { onClick() }
 }

@@ -1,14 +1,14 @@
 import AppKit
 import WebKit
 
-/// Mochi's panel: a big pixel speech bubble (one of the Resources/web pages) in its own floating window, its tail
-/// pointing at whatever opened it. The menu bar dropdown and the mini's panel are both one. This is the window and
-/// the messages to and from the page; its owner decides what's in it and does what you click.
+/// Mochi's panel: a big pixel speech bubble (one of the web/ pages) in its own floating window, its tail pointing at
+/// whatever opened it. The menu bar dropdown is one. This is the window and the messages to and from the page; its
+/// owner decides what's in it and does what you click.
 ///
-/// The page implements `panel.show(state, below)`, `panel.update(state)` and `panel.place(tailX, below)`, and posts
-/// `{type: 'act' | 'tab' | 'size' | 'close'}` back (see mini-panel.js).
+/// The page implements `panel.show(state, below)` (returning its `{w, h}` once drawn), `panel.update(state)` and
+/// `panel.place(tailX, below)`, and posts `{type: 'act' | 'tab' | 'size' | 'close'}` back (see menu.js).
 @MainActor
-final class BubblePanel: NSObject, WKScriptMessageHandler {
+final class BubblePanel: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
 
     /// Takes key focus without activating the app, so Escape reaches the page.
     final class KeyPanel: NSPanel {
@@ -23,6 +23,10 @@ final class BubblePanel: NSObject, WKScriptMessageHandler {
     private var anchor = (x: CGFloat(0), top: CGFloat(0), feet: CGFloat(0))
     private var below = false
     private var tab: String?
+    private var loaded = false
+    /// Asked to open before the page finished loading: open as soon as it has.
+    private var pending = false
+    private var opening = false
     var state: () -> [String: Any] = { [:] }
     /// You clicked something: an action name and its argument.
     var act: (String, String?) -> Void = { _, _ in }
@@ -30,6 +34,7 @@ final class BubblePanel: NSObject, WKScriptMessageHandler {
     var isOpen: Bool { window.isVisible }
 
     /// `level` defaults to Mochi's; the usage dropdown goes higher so it also opens over the notch's own window.
+    /// The page starts loading now, so the first open is as quick as every other.
     init(page: String, level: NSWindow.Level = .statusBar) {
         let cfg = WKWebViewConfiguration()
         web = Web.View(frame: NSRect(origin: .zero, size: size), configuration: cfg)
@@ -38,6 +43,7 @@ final class BubblePanel: NSObject, WKScriptMessageHandler {
                           backing: .buffered, defer: false)
         super.init()
         cfg.userContentController.add(Web.WeakHandler(self), name: "panel")
+        web.navigationDelegate = self
         Web.load(page, in: web)
         window.contentView = web
         window.isOpaque = false
@@ -49,17 +55,35 @@ final class BubblePanel: NSObject, WKScriptMessageHandler {
 
     /// Opens pointing at its anchor: `x` its middle, `top` just over it, `feet` under it (screen coordinates).
     /// Above if there's room, below if not. Showing it again while it's open closes it.
+    ///
+    /// The page draws the new state while the window is still hidden and reports its size, so the bubble appears
+    /// already the right size, in the right place, with nothing stale in it.
     func show(x: CGFloat, top: CGFloat, feet: CGFloat) {
         if isOpen { return close() }
+        guard !opening else { return }   // a second click while it's drawing: it's on its way
         anchor = (x, top, feet)
+        guard loaded else { pending = true; return }
+        opening = true
+        var s = state()
+        if let tab { s["tab"] = tab }
+        web.evaluateJavaScript("panel.show(\(Web.json(s)), true)") { [weak self] result, _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.opening = false
+                if let d = result as? [String: Any], let w = d["w"] as? Double, let h = d["h"] as? Double, w > 0, h > 0 {
+                    self.size = NSSize(width: w, height: h)
+                }
+                self.present()
+            }
+        }
+    }
+
+    private func present() {
         below = !fitsAbove(size.height)
         place()
         window.orderFrontRegardless()
         window.makeKey()
         window.makeFirstResponder(web)
-        var s = state()
-        if let tab { s["tab"] = tab }
-        web.evaluateJavaScript("panel.show(\(Web.json(s)), \(below))")
         opened(true)
 
         // nothing closes a borderless panel by itself: a click anywhere else does
@@ -82,6 +106,7 @@ final class BubblePanel: NSObject, WKScriptMessageHandler {
     }
 
     func close() {
+        pending = false
         guard isOpen else { return }
         monitors.forEach(NSEvent.removeMonitor)
         monitors = []
@@ -89,6 +114,13 @@ final class BubblePanel: NSObject, WKScriptMessageHandler {
         timer = nil
         window.orderOut(nil)
         opened(false)
+    }
+
+    nonisolated func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        MainActor.assumeIsolated {
+            loaded = true
+            if pending { pending = false; show(x: anchor.x, top: anchor.top, feet: anchor.feet) }
+        }
     }
 
     func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {

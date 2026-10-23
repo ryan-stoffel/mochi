@@ -19,7 +19,7 @@ final class WizardPage {
 
     func show() {
         if let page { return page.show() }
-        let p = PageWindow(page: "wizard.html", title: "Welcome to AI Usage", size: NSSize(width: 460, height: 520))
+        let p = PageWindow(page: "wizard.html", title: "Welcome to Mochi", size: NSSize(width: 460, height: 520))
         p.state = { [weak self] in self?.state() ?? [:] }
         p.act = { [weak self] name, arg in self?.act(name, arg) }
         p.closed = { [weak self] in self?.page = nil }
@@ -42,21 +42,22 @@ final class WizardPage {
         var d: [String: Any] = ["id": p.id, "name": p.name]
         let install: [String: Any]? = p.installCommand == nil ? nil : ["title": "install", "name": "install"]
         let signIn: [String: Any]? = p.loginCommand == nil ? nil : ["title": "log in", "name": "signin"]
-        switch usage.status(p.id).state {
+        let status = usage.status(p.id)
+        switch status.state {
         case .checking:
             d["line"] = "looking..."
         case .notInstalled:
-            d["line"] = "not installed."
+            d["line"] = status.message?.lowercased() ?? "not installed."
             d["action"] = install
         case .installed:
-            d["line"] = "found it. sign in to read your usage."
+            d["line"] = status.message?.lowercased() ?? "found it. sign in to read your usage."
             d["tone"] = "warn"
             d["action"] = signIn
         case .loggedIn:
             d["line"] = usage.primaryPct(p.id).map { "signed in. \($0)% used." } ?? "signed in."
             d["tone"] = "ok"
         case .error(let message):
-            d["line"] = message.lowercased()
+            d["line"] = (status.message ?? message).lowercased()
             d["tone"] = "bad"
             d["action"] = signIn
         case .disabled:

@@ -1,9 +1,9 @@
 import AppKit
 import MochiCore
 
-/// The usage dropdown: Mochi's panel (menu.html in a `BubblePanel`) with a tab per provider, its gauges, Claude's
-/// history and details, and refresh, settings and quit. The menu bar icon opens it hanging from the menu bar; in
-/// notch mode, right-clicking the notch opens it under the notch. One instance, shared by both shells.
+/// The usage dropdown: Mochi's panel (menu.html in a `BubblePanel`) with a tab per provider, its gauges, history and
+/// details, and refresh, settings and quit. The menu bar icon opens it hanging from the menu bar; in notch mode,
+/// right-clicking the notch opens it under the notch. One instance, shared by both shells.
 @MainActor
 final class UsageMenu {
 
@@ -21,6 +21,9 @@ final class UsageMenu {
 
     /// Opens with its tail on `x`, under `feet` (or over `top` if there's room there). Again closes it.
     func show(x: CGFloat, top: CGFloat, feet: CGFloat) { panel.show(x: x, top: top, feet: feet) }
+
+    /// Loads the page ahead of the first click, so the dropdown opens at once.
+    func warm() { _ = panel }
 
     func update() { panel.update() }
 
@@ -73,11 +76,24 @@ final class UsageMenu {
 
     private func state() -> [String: Any] {
         let p = Self.selected
-        var mood = p.name
-        if usage.isRefreshing { mood = "checking..." } else if let at = usage.lastUpdated(p.id) { mood = "updated " + Format.ago(at) }
+        var mood = "not checked yet", stale = false
+        if let at = usage.lastUpdated(p.id) {
+            mood = "updated " + Format.ago(at)
+            // the poll runs every 5 minutes; three missed means something's stuck
+            stale = Date().timeIntervalSince(at) > 3 * UsageService.pollInterval
+        }
+        // say where the numbers came from when it isn't the provider's own usage endpoint
+        switch usage.source(p.id) {
+        case UsageSource.statusLine?: mood += " · from claude code"
+        case UsageSource.logs?: mood += " · from codex's logs"
+        case UsageSource.cli?: mood += " · from the cli"
+        default: break
+        }
+        if usage.isRefreshing { mood = "checking..." }
         return [
             "provider": p.id,
             "mood": mood,
+            "stale": stale && !usage.isRefreshing,
             "refreshing": usage.isRefreshing,
             "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
             "tabs": Provider.all.filter { Settings.shared.isEnabled($0.id) }.map { ["id": $0.id, "title": $0.name, "dot": dot($0.id)] },
@@ -115,24 +131,26 @@ final class UsageMenu {
         }
         if p.id == "claude" { return claudeBody() }
         let status = usage.status(p.id)
+        // the service's own reason ("finish agy's first-run setup...") beats a generic line
+        let reason = status.message.map { $0.lowercased() }
         switch status.state {
         case .loggedIn:
             let gauges = otherGauges(p.id)
-            if gauges.isEmpty { return empty("fetching \(p.name.lowercased()) usage...") }
-            var b: [String: Any] = ["kind": "gauges", "gauges": gauges]
-            if let message = status.message { b["banner"] = message.lowercased() }
+            if gauges.isEmpty { return empty("fetching \(p.name.lowercased()) usage...", hint: reason) }
+            var b: [String: Any] = ["kind": "gauges", "gauges": gauges, "details": ["history": history(p.id)]]
+            if let reason { b["banner"] = reason }
             return b
         case .checking:
             return empty("checking \(p.name.lowercased())...")
         case .notInstalled:
             let action: (String, String, String)? = p.installCommand != nil ? ("install", "install", p.id)
                 : p.installURL != nil ? ("open docs", "install", p.id) : nil
-            return empty("\(p.name.lowercased()) isn't installed.", hint: p.installCommand ?? p.hint, action: action)
+            return empty("\(p.name.lowercased()) isn't installed.", hint: reason ?? p.installCommand ?? p.hint, action: action)
         case .installed:
-            return empty("\(p.name.lowercased()) is installed, but not signed in yet.", hint: p.hint.lowercased(),
+            return empty(reason ?? "\(p.name.lowercased()) is installed, but not signed in yet.", hint: reason == nil ? p.hint.lowercased() : nil,
                          action: p.loginCommand != nil ? ("log in", "login", p.id) : nil)
         case .error(let message):
-            return empty(message, hint: "this usually clears on the next refresh.", error: true, action: ("retry", "retry", p.id))
+            return empty((status.message ?? message).lowercased(), hint: "this usually clears on the next refresh.", error: true, action: ("retry", "retry", p.id))
         case .disabled:
             return empty("\(p.name.lowercased()) is turned off.", hint: "turn it back on in settings.",
                          action: ("open settings", "settings", ""))
@@ -163,7 +181,8 @@ final class UsageMenu {
             // Nothing cached to fall back on: say why, in words written for this spot.
             switch d.errorType {
             case "offline": return empty("you're offline.", hint: "waiting for a connection...")
-            case "auth": return empty("not logged in to claude code.", hint: "run claude in a terminal to log in.",
+            case "auth": return empty("not logged in to claude code.",
+                                      hint: usage.status("claude").message?.lowercased() ?? "run claude in a terminal to log in.",
                                       action: ("log in", "login", "claude"))
             default:
                 return d.error.map { empty($0, hint: Provider.all[0].installCommand, error: true, action: ("retry", "retry", "claude")) }
@@ -175,7 +194,7 @@ final class UsageMenu {
             gauges.append(gauge("credits", pct, reset: c.reset,
                                 sub: c.spent.map { String(format: "$%.2f / $%.2f spent", $0, c.total ?? 0) }))
         }
-        var details: [String: Any] = ["history": ["mode": chartMode.rawValue, "bars": history()]]
+        var details: [String: Any] = ["history": history("claude")]
         if let promo = d.weeklyPromo { details["promo"] = promo.lowercased() }
         if let s = d.skills, !s.isEmpty { details["skills"] = s.map { ["name": $0.name, "pct": $0.pct] } }
         if let m = d.mcpServers, !m.isEmpty { details["mcp"] = m.map { ["name": $0.name, "pct": $0.pct] } }
@@ -203,15 +222,15 @@ final class UsageMenu {
         return out
     }
 
-    /// The chart's 24 columns: the highest reading in each slice of the window, or nothing where there were none.
-    private func history() -> [Any] {
+    /// A provider's chart: 24 columns, the highest reading in each slice of the window, or nothing where there were none.
+    private func history(_ provider: String) -> [String: Any] {
         let now = Date(), window = chartMode.window, slice = window / 24
         var bars = [Int?](repeating: nil, count: 24)
-        for p in HistoryStore.shared.points(within: window, now: now) {
+        for p in HistoryStore.shared.points(for: provider, within: window, now: now) {
             guard let v = chartMode.value(p) else { continue }
             let i = min(23, max(0, Int((window - now.timeIntervalSince(p.timestamp)) / slice)))
             bars[i] = max(bars[i] ?? 0, v)
         }
-        return bars.map { $0.map { $0 as Any } ?? NSNull() }
+        return ["mode": chartMode.rawValue, "bars": bars.map { $0.map { $0 as Any } ?? NSNull() }]
     }
 }

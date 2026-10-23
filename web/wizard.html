@@ -2,15 +2,14 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Welcome to AI Usage</title>
+<title>Welcome to Mochi</title>
 <link rel="stylesheet" href="pet.css">
 <link rel="stylesheet" href="ui.css">
 <style>
-  /* The setup wizard: one big Mochi panel filling the window, under the transparent title bar. */
+  /* The setup wizard: printed straight on Mochi's paper under the transparent title bar, the same as Settings. */
   html, body { height: 100%; background: #fffaf3; }
-  .card.px-bubble { position: absolute; top: 34px; left: 17px; right: 17px; bottom: 20px; width: auto; margin: 0;
-    display: flex; flex-direction: column; padding: 14px 16px 14px; }
-  .card.px-bubble::after { display: none; }   /* nothing to point at */
+  .page { --ink: #2a1d1a; --paper: #fffaf3; --shade: rgba(42, 29, 26, 0.16); position: absolute; top: 32px; left: 28px; right: 28px; bottom: 22px;
+    display: flex; flex-direction: column; color: var(--ink); font: 400 18px/1.15 "Jersey 15", ui-monospace, Menlo, monospace; letter-spacing: 0.02em; }
 
   header .name { font-size: 28px; }
   header .mood { font-size: 16px; margin-top: 3px; white-space: normal; }
@@ -41,7 +40,7 @@
 
   /* where it lives: two tiles with a tiny drawing of each */
   .where { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
-  .where button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 6px 9px; background: var(--soft); text-align: center; }
+  .where button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 6px 9px; background: #fdf5ec; text-align: center; box-shadow: 0 0 0 2px var(--line); }
   .where button:hover { background: #efe2d4; }
   .where button.on { background: var(--paper); box-shadow: 0 -2px 0 0 var(--orange), 0 2px 0 0 var(--orange), -2px 0 0 0 var(--orange), 2px 0 0 0 var(--orange); }
   .where .t { font-size: 18px; }
@@ -62,7 +61,7 @@
 </style>
 </head>
 <body>
-<div id="card" class="card px-bubble">
+<div id="card" class="card page">
   <header><div class="who"><div class="name" id="title"></div><div class="mood" id="sub"></div></div></header>
   <div id="body"></div>
   <div class="foot" id="foot"></div>

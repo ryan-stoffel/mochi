@@ -44,18 +44,18 @@
 
   const STEPS = {
     welcome: () => ({
-      title: 'welcome to ai usage',
-      sub: 'your plans, and a mini for your agents.',
+      title: 'welcome to mochi',
+      sub: 'a pixel critter for your desktop, your agents and your plans.',
       body: [
         h('div', { class: 'row' }, Object.keys(MINI_LOOKS).map((id) => mini(id, 'wave', 2.5))),
         h('div', { class: 'floor' }),
-        h('p', {}, 'ai usage reads how much of your plan you\'ve used, straight from the claude, antigravity, codex and cursor clis you already have.'),
+        h('p', {}, 'mochi lives on your screen and acts out what claude, codex, antigravity and cursor are up to. it also reads how much of each plan you\'ve used, straight from the tools you already have.'),
         h('p', { class: 'muted' }, 'it checks every few minutes. nothing leaves your mac.'),
       ],
     }),
     claude: () => ({
       title: 'checking claude code',
-      sub: 'ai usage reads your claude plan from it.',
+      sub: 'mochi reads your claude plan from it.',
       body: [hero(tool('claude').tone === 'ok' ? 'wave' : tool('claude').tone ? 'idle' : 'think', 'claude'), card(tool('claude'), true)],
     }),
     providers: () => ({
@@ -67,23 +67,23 @@
       title: 'where should it live?',
       sub: 'you can change this any time in settings.',
       body: [h('div', { class: 'where' },
-        [['tray', 'menu bar', 'a badge that opens a panel.', 'badge'], ['notch', 'notch', 'a pill that fans out every tool.', 'pill']].map(([id, t, d, mark]) =>
+        [['tray', 'menu bar', 'your mochi and its % up top.', 'badge'], ['notch', 'notch', 'a pill under the notch that fans out.', 'pill']].map(([id, t, d, mark]) =>
           h('button', { class: S.displayMode === id ? 'on' : '', onclick: () => { S.displayMode = id; act('mode', id); render(true); } },
             h('div', { class: 'screen' }, h('i', { class: mark })), h('div', { class: 't' }, t), h('div', { class: 'd' }, d))))],
     }),
     login: () => ({
       title: 'start automatically',
-      sub: "usage only helps if it's already there when you look.",
+      sub: "mochi's best when it's already there when you look.",
       body: [hero(S.launchAtLogin ? 'stretch' : 'sleep'),
         h('button', { class: 'set', onclick: () => { S.launchAtLogin = !S.launchAtLogin; act('startAtLogin', S.launchAtLogin); render(true); } },
-          'open ai usage when i log in', h('span', { class: 'switch' + (S.launchAtLogin ? ' on' : '') }))],
+          'open mochi when i log in', h('span', { class: 'switch' + (S.launchAtLogin ? ' on' : '') }))],
     }),
     done: () => ({
       title: "you're all set",
-      sub: S.displayMode === 'notch' ? 'look just under the notch. click the pill to fan out every tool.'
-        : 'look for the badge in your menu bar. click it any time to see your usage.',
+      sub: S.displayMode === 'notch' ? 'your usage is just under the notch. click the pill to fan out every tool.'
+        : 'your usage is in the menu bar. click your mochi up there any time.',
       body: [hero('cheer'),
-        h('p', { class: 'muted' }, 'your mini sits in the corner and follows your sessions. right-click it for its panel.')],
+        h('p', { class: 'muted' }, "mochi's on your screen too, following your sessions. right-click it for its panel.")],
     }),
   };
 
@@ -113,6 +113,7 @@
 
   addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { const b = $('foot').querySelector('.primary'); if (b) b.click(); }
+    if (e.key === 'Escape' || (e.metaKey && e.key.toLowerCase() === 'w')) { e.preventDefault(); post({ type: 'close' }); }
   });
 
   window.page = { update(state) { S = state; render(); } };
