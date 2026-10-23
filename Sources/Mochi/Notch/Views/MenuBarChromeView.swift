@@ -1,82 +1,45 @@
 import SwiftUI
 import MochiCore
 
-/// The rest-state menu-bar chrome — one continuous solid black, rounded
-/// bar (Atoll's closed-notch look: a single fused shape, not separate
-/// floating chips) that reaches all the way from the badge to the
-/// percentage, with the real hardware notch sitting inside it undisturbed
-/// (drawing black there is harmless — the physical camera housing is
-/// already black). On non-notched external displays this same bar is what
-/// stands in for the notch, since it never shrinks narrower than the
-/// notch's own width.
+/// The rest state: one solid black bar fused with the notch (drawing black over the camera housing is harmless), the
+/// active provider's critter on its left and its usage on its right. On a display without a notch, this bar stands in
+/// for one.
 ///
-/// The bar's *position* never changes — it's always centered on the notch.
-/// Expanding only shrinks its width symmetrically from both sides down to
-/// just the notch's own width (as the badge/percentage merge into it and
-/// disappear); it never slides or jumps.
+/// The bar never moves. Opening shrinks it to just the notch's width while the critter and number fly into the notch.
+/// The flank positions are a fixed offset from the centre, so they're right the instant `isExpanded` flips.
 struct MenuBarChromeView: View {
-    let claude: ClaudeUsage
-    let antigravity: GeminiUsage?
-    let codex: CodexUsage?
-    let cursor: CursorUsage?
-    let providerStatus: [String: ProviderStatus]
+    @ObservedObject var usage: UsageService
     let currentProviderIdx: Int
     let panelSize: CGSize
     let isExpanded: Bool
 
-    /// The pill always reflects whichever provider is currently selected in
-    /// the ring (hover-picked), not always Claude — so switching providers
-    /// while expanded is still reflected once it collapses back down.
-    private var activeProvider: Provider { Provider.all[currentProviderIdx] }
-    private var isClaudeActive: Bool { activeProvider.id == "claude" }
-    private var activeStatus: ProviderStatus {
-        providerStatus[activeProvider.id] ?? ProviderStatus(state: .checking)
-    }
+    private var provider: Provider { Provider.all[currentProviderIdx] }
+    private var status: ProviderStatus { usage.status(provider.id) }
 
-    private var barHeight: CGFloat { NotchGeometry.info().reservedTopHeight }
-    private var hasNotch: Bool { NotchGeometry.info().hasNotch }
+    private var info: NotchGeometry.Info { NotchGeometry.info() }
     private var notchRect: CGRect { NotchGeometry.notchLocalRect(panelSize: panelSize) }
-    private var restBarWidth: CGFloat { NotchGeometry.compactSize().width }
-
     private var barCenterX: CGFloat { panelSize.width / 2 }
-    private var barWidth: CGFloat { isExpanded ? notchRect.width : restBarWidth }
-
-    /// Centers of the left/right flank slots at rest — a *fixed* offset
-    /// from the bar's own center (constants only, no `panelSize`), not
-    /// re-derived from the live panel width. `panelSize` lags `isExpanded`
-    /// by ~0.46s on collapse (the window's hit-test footprint intentionally
-    /// stays large until the collapse animation finishes), so a
-    /// panelSize-relative formula would place these at the wide expanded
-    /// window's edges for that whole window, then jump inward once
-    /// `canvasSize` finally shrinks — the "shoots out to the sides" glitch.
-    /// A fixed offset from center is correct the instant `isExpanded` flips,
-    /// independent of how large the window still is underneath it.
-    private var flankOffset: CGFloat { NotchGeometry.info().notchWidth / 2 + NotchGeometry.Layout.flankWidth / 2 }
-    private var leftCenterX: CGFloat { barCenterX - flankOffset }
-    private var rightCenterX: CGFloat { barCenterX + flankOffset }
+    private var barWidth: CGFloat { isExpanded ? notchRect.width : NotchGeometry.compactSize().width }
+    private var flankOffset: CGFloat { info.notchWidth / 2 + NotchGeometry.Layout.flankWidth / 2 }
 
     var body: some View {
+        let barHeight = info.reservedTopHeight
         ZStack {
-            // Once fully merged into a *real* notch, this shape has nothing
-            // left to contribute — the physical camera housing already
-            // renders that exact region black. Left visible, its own
-            // rounded top corners would show up as a separate curved seam
-            // sitting just below the real notch (the "extra black spacer"
-            // artifact). On non-notched displays it stays visible, since
-            // it's the only thing standing in for the notch there.
+            // Fully merged into a real notch, the bar has nothing to add, and its rounded corners would show as a seam
+            // under the camera housing. Without a notch it stays: it's the only thing standing in for one.
             BumpShape(topCornerRadius: 6, bottomCornerRadius: barHeight / 2)
                 .fill(Color.black)
                 .frame(width: barWidth, height: barHeight)
                 .position(x: barCenterX, y: barHeight / 2)
-                .opacity(isExpanded && hasNotch ? 0 : 1)
+                .opacity(isExpanded && info.hasNotch ? 0 : 1)
 
-            badge
-                .position(x: isExpanded ? notchRect.midX : leftCenterX, y: barHeight / 2)
+            PixelCritter(provider: provider.id, height: 17, busy: usage.isRefreshing)
+                .position(x: isExpanded ? notchRect.midX : barCenterX - flankOffset, y: barHeight / 2)
                 .scaleEffect(isExpanded ? 0.3 : 1)
                 .opacity(isExpanded ? 0 : 1)
 
-            percentageLabel
-                .position(x: isExpanded ? notchRect.midX : rightCenterX, y: barHeight / 2)
+            label
+                .position(x: isExpanded ? notchRect.midX : barCenterX + flankOffset, y: barHeight / 2)
                 .scaleEffect(isExpanded ? 0.3 : 1)
                 .opacity(isExpanded ? 0 : 1)
         }
@@ -84,66 +47,29 @@ struct MenuBarChromeView: View {
         .animation(.island(open: isExpanded), value: isExpanded)
     }
 
-    /// The active provider's mini, the same critter as the menu bar icon and the one on screen.
-    private var badge: some View {
-        PixelCritter(provider: activeProvider.id, height: 17)
-    }
-
-    /// Antigravity's "right now" figure for the pill, same role Claude's
-    /// `session` plays there — the 5-hour window is Antigravity's rolling
-    /// short-term quota, same as Claude's session is its rolling short-term
-    /// quota (as opposed to the weekly figure, which is the longer-window
-    /// one for both).
-    private var antigravityPillPct: Int? {
-        guard activeProvider.id == "antigravity", activeStatus.state == .loggedIn else { return nil }
-        return antigravity?.fiveHourPct ?? antigravity?.weeklyPct
-    }
-
-    private var codexPillPct: Int? {
-        guard activeProvider.id == "codex", activeStatus.state == .loggedIn else { return nil }
-        return codex?.primaryPct
-    }
-
-    private var cursorPillPct: Int? {
-        guard activeProvider.id == "cursor", activeStatus.state == .loggedIn else { return nil }
-        return cursor?.primaryPct
-    }
-
-    @ViewBuilder private var percentageLabel: some View {
-        if isClaudeActive, let session = claude.session {
-            Text("\(session)%")
-                .font(PixelFont.font(19))
-                .foregroundColor(Format.statusColor(session))
-                .fixedSize()
-        } else if let pct = antigravityPillPct {
-            Text("\(pct)%")
-                .font(PixelFont.font(19))
-                .foregroundColor(Format.statusColor(pct))
-                .fixedSize()
-        } else if let pct = codexPillPct {
-            Text("\(pct)%")
-                .font(PixelFont.font(19))
-                .foregroundColor(Format.statusColor(pct))
-                .fixedSize()
-        } else if let pct = cursorPillPct {
+    @ViewBuilder private var label: some View {
+        if let pct = usage.primaryPct(provider.id) {
             Text("\(pct)%")
                 .font(PixelFont.font(19))
                 .foregroundColor(Format.statusColor(pct))
                 .fixedSize()
         } else {
-            Text(compactLabel)
+            Text(placeholder)
                 .font(PixelFont.font(15))
-                .foregroundColor(.white.opacity(0.45))
+                .foregroundColor(.white.opacity(0.5))
                 .fixedSize()
         }
     }
 
-    private var compactLabel: String {
-        guard isClaudeActive else { return activeStatus.shortLabel }
-        switch claude.errorType {
-        case "offline": return "offline"
-        case "auth": return "sign in"
-        default: return "…"
+    /// A word for when there's no number: why not, in as few letters as fit beside the notch.
+    private var placeholder: String {
+        if provider.id == "claude" {
+            switch usage.claude.errorType {
+            case "offline": return "offline"
+            case "auth": return "sign in"
+            default: break
+            }
         }
+        return status.shortLabel
     }
 }

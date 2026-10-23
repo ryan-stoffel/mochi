@@ -1,104 +1,38 @@
 import SwiftUI
 import MochiCore
 
-/// One persistent view for both rest and expanded states — no more
-/// discrete view-switching between a floating pill and a separate ring.
-/// `canvasSize` (the actual window/frame footprint) and `isExpanded` (which
-/// drives every internal animation) are deliberately separate pieces of
-/// state:
-///
-/// - Expanding: `canvasSize` jumps to the expanded footprint *instantly*
-///   (reported to `NotchController` with no animation) so there's room for
-///   the bump/fan to grow into, then `isExpanded` flips inside
-///   `withAnimation` so the bump, badge/percentage merge, and wedge fan all
-///   animate within that already-large canvas.
-/// - Collapsing: `isExpanded` flips back inside `withAnimation` first; only
-///   once that animation has finished do we shrink `canvasSize` back down
-///   (a delayed `Task`, mirroring Atoll's `expandingViewTask`/`sneakPeekTask`
-///   pattern), so the window's dead-zone footprint is only ever as big as
-///   the *current* visual, not lingering at the expanded size after the
-///   content has already collapsed.
+/// One persistent view for both states: the pill beside the notch at rest, and the hub and fan hanging from it when
+/// open. It never resizes or tracks the pointer itself; `NotchController` decides open/ring (`NotchState`) and this
+/// only animates between them inside a canvas that's always the full open size.
 struct IslandShellView: View {
     @ObservedObject var usage: UsageService
-    let onResize: (CGSize) -> Void
+    @ObservedObject var state: NotchState
 
-    @State private var canvasSize: CGSize = NotchGeometry.compactSize()
-    @State private var isExpanded = false
-    @State private var currentProviderIdx = 0
-    @State private var hoverSuppressedUntil: Date = .distantPast
-    @State private var collapseTask: Task<Void, Never>?
-
-    private var barHeight: CGFloat { NotchGeometry.info().reservedTopHeight }
+    /// The same provider the menu bar icon and its dropdown show, so switching here switches there too.
+    @State private var currentProviderIdx = Provider.all.firstIndex { $0.id == Settings.shared.selectedProvider } ?? 0
 
     var body: some View {
+        let size = NotchGeometry.expandedSize()
+        let barHeight = NotchGeometry.info().reservedTopHeight
         ZStack(alignment: .top) {
-            MenuBarChromeView(claude: usage.claude, antigravity: usage.antigravity, codex: usage.codex, cursor: usage.cursor, providerStatus: usage.providers,
-                              currentProviderIdx: currentProviderIdx, panelSize: canvasSize, isExpanded: isExpanded)
+            MenuBarChromeView(usage: usage, currentProviderIdx: currentProviderIdx, panelSize: size, isExpanded: state.open)
 
-            // No separate bump shape — that was a second black rectangle
-            // that only existed while expanded, which is exactly what read
-            // as "a weird extra black bar that only appears on hover." The
-            // hub itself (drawn by RingView, starting immediately below the
-            // bar) is now the only thing that appears, with its own top
-            // half overlapping up into the bar for the fused look.
-            if isExpanded {
-                RingView(usage: usage, currentProviderIdx: $currentProviderIdx, onSync: sync)
-                    .position(x: canvasSize.width / 2, y: barHeight + RingGeometry.height / 2)
-                    .transition(.opacity.combined(with: .scale(scale: 0.55, anchor: .top)))
+            // The hub (drawn by RingView with its centre on the bar's bottom edge) is the only thing that appears, its
+            // top half tucked up into the bar for the fused look.
+            if state.open {
+                RingView(usage: usage, ringOpen: state.ring, currentProviderIdx: $currentProviderIdx) {
+                    Task { await usage.refresh() }
+                }
+                .position(x: size.width / 2, y: barHeight + RingGeometry.height / 2)
+                .transition(.opacity.combined(with: .scale(scale: 0.6, anchor: .top)))
             }
         }
-        .frame(width: canvasSize.width, height: canvasSize.height, alignment: .top)
-        .contentShape(Rectangle())
-        .animation(.island(open: isExpanded), value: isExpanded)
-        .onHover { handleHover($0) }
-        .onAppear {
-            onResize(canvasSize)
-            if ProcessInfo.processInfo.environment["ISLAND_DEBUG_EXPAND"] != nil {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { expand() }
-            }
+        .frame(width: size.width, height: size.height, alignment: .top)
+        .animation(.island(open: state.open), value: state.open)
+        .onChange(of: currentProviderIdx) { Settings.shared.selectedProvider = Provider.all[$0].id }
+        // the dropdown (right-click the hub) can switch providers too: pick that up each time it opens
+        .onChange(of: state.open) { open in
+            if open, let i = Provider.all.firstIndex(where: { $0.id == Settings.shared.selectedProvider }) { currentProviderIdx = i }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .panelShouldCollapse)) { _ in
-            collapse()
-        }
-    }
-
-    private func handleHover(_ hovering: Bool) {
-        if hovering {
-            guard Date() >= hoverSuppressedUntil else { return }
-            expand()
-        } else {
-            collapse()
-        }
-    }
-
-    private func expand() {
-        guard !isExpanded else { return }
-        collapseTask?.cancel()
-        let expandedSize = NotchGeometry.expandedSize()
-        canvasSize = expandedSize
-        onResize(expandedSize)
-        withAnimation(.island(open: true)) {
-            isExpanded = true
-        }
-    }
-
-    private func collapse() {
-        guard isExpanded else { return }
-        withAnimation(.island(open: false)) {
-            isExpanded = false
-        }
-        hoverSuppressedUntil = Date().addingTimeInterval(0.35)
-        collapseTask?.cancel()
-        collapseTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(0.46))
-            guard !Task.isCancelled else { return }
-            let compactSize = NotchGeometry.compactSize()
-            canvasSize = compactSize
-            onResize(compactSize)
-        }
-    }
-
-    private func sync() {
-        Task { await usage.refresh() }
     }
 }

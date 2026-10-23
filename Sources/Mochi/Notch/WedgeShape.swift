@@ -67,6 +67,41 @@ struct ArcShape: Shape {
     }
 }
 
+/// The lit blocks of a 20-block usage meter bent into an arc, like the dropdown's meters: each block a small ring
+/// segment, filled in from the arc's left end (its larger angle, since angles run right to left across the fan).
+struct ArcBlocks: Shape {
+    var cx: CGFloat
+    var cy: CGFloat
+    var rInner: CGFloat
+    var rOuter: CGFloat
+    var startDeg: Double
+    var endDeg: Double
+    var lit: Int
+    var count = 20
+
+    var animatableData: AnimatablePair<AnimatablePair<Double, Double>, CGFloat> {
+        get { AnimatablePair(AnimatablePair(startDeg, endDeg), rOuter) }
+        set {
+            startDeg = newValue.first.first
+            endDeg = newValue.first.second
+            rInner += newValue.second - rOuter   // the band keeps its thickness as it moves out
+            rOuter = newValue.second
+        }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let step = (endDeg - startDeg) / Double(count)
+        let gap = min(step * 0.3, Double(1.6 / rOuter * 180 / .pi))   // ~1.6pt between blocks
+        for i in 0..<min(lit, count) {
+            let hi = endDeg - Double(i) * step
+            path.addPath(WedgeShape(cx: cx, cy: cy, rInner: rInner, rOuter: rOuter, startDeg: hi - step + gap / 2,
+                                    endDeg: hi - gap / 2).path(in: rect))
+        }
+        return path
+    }
+}
+
 extension CGPoint {
     static func onArc(cx: CGFloat, cy: CGFloat, r: CGFloat, deg: Double) -> CGPoint {
         let rad = deg * .pi / 180

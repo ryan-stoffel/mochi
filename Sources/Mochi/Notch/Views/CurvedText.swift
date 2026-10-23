@@ -22,8 +22,11 @@ struct CurvedText: View {
     let centerDeg: Double
     let fontSize: CGFloat
     let color: Color
+    /// The arc length it may take up; past that it's cut short with an ellipsis rather than spilling out of its wedge.
+    let maxWidth: CGFloat?
 
-    init(text: String, radius: CGFloat, centerDeg: Double, fontSize: CGFloat, color: Color) {
+    init(text: String, radius: CGFloat, centerDeg: Double, fontSize: CGFloat, color: Color, maxWidth: CGFloat? = nil) {
+        self.maxWidth = maxWidth
         self.text = text
         self.radius = radius
         self.centerDeg = centerDeg
@@ -34,9 +37,19 @@ struct CurvedText: View {
     /// Jersey 15 runs small for its point size, so it's set a third larger than a system font would be.
     private var nsFont: NSFont { PixelFont.ns(fontSize * 1.35) }
 
+    /// The characters to draw and their widths, cut short with an ellipsis if they'd run past `maxWidth`.
+    private var fitted: (chars: [String], widths: [CGFloat]) {
+        var chars = Array(text).map(String.init)
+        var widths = chars.map(charWidth)
+        guard let maxWidth, widths.reduce(0, +) > maxWidth else { return (chars, widths) }
+        let dots = charWidth("…")
+        while !chars.isEmpty, widths.reduce(0, +) + dots > maxWidth { chars.removeLast(); widths.removeLast() }
+        while chars.last == " " { chars.removeLast(); widths.removeLast() }
+        return (chars + ["…"], widths + [dots])
+    }
+
     var body: some View {
-        let chars = Array(text).map(String.init)
-        let widths = chars.map(charWidth)
+        let (chars, widths) = fitted
         let totalWidth = widths.reduce(0, +)
 
         ZStack {

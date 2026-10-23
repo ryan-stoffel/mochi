@@ -3,7 +3,7 @@ import MochiCore
 
 enum IconKind {
     case critter(String) // a provider's mini, by provider id
-    case symbol(String)  // SF Symbol name
+    case pixel(String)   // one of `PixelIcon`'s icons
 }
 
 /// A single ring bubble — either a provider (top level) or one of a
@@ -70,7 +70,7 @@ struct Bubble: Identifiable {
     static func syncedBubble(lastRefreshed: Date?, color: Color) -> Bubble {
         let ago = Format.ago(lastRefreshed)
         let big = ago == "just now" ? "Now" : ago.replacingOccurrences(of: " ago", with: "")
-        return Bubble(id: "synced", label: "Synced", color: color, icon: .symbol("checkmark.circle"),
+        return Bubble(id: "synced", label: "Synced", color: color, icon: .pixel("check"),
                       pct: nil, big: big, sub: "Last synced \(ago)")
     }
 
@@ -81,25 +81,25 @@ struct Bubble: Identifiable {
     /// stats belong to, not the individual stat.
     static func claudeMetrics(_ c: ClaudeUsage) -> [Bubble] {
         var list: [Bubble] = []
-        list.append(Bubble(id: "session", label: "Session", color: claudeOrange, icon: .symbol("bolt.fill"),
+        list.append(Bubble(id: "session", label: "Session", color: claudeOrange, icon: .pixel("bolt"),
                             pct: c.session, big: c.session != nil ? "\(c.session!)%" : "—",
                             sub: c.sessionReset.map { "Resets \(Format.reset($0) ?? "")" }))
-        list.append(Bubble(id: "weekly", label: "Weekly", color: claudeOrange, icon: .symbol("calendar"),
+        list.append(Bubble(id: "weekly", label: "Weekly", color: claudeOrange, icon: .pixel("clock"),
                             pct: c.weekly, big: c.weekly != nil ? "\(c.weekly!)%" : "—",
                             sub: c.weeklyReset.map { "Resets \(Format.reset($0) ?? "")" }))
         if let credits = c.credits, let pct = credits.pct {
             let sub = (credits.spent != nil && credits.total != nil)
                 ? String(format: "$%.2f / $%.2f", credits.spent!, credits.total!) : nil
-            list.append(Bubble(id: "credits", label: "Credits", color: claudeOrange, icon: .symbol("cylinder.fill"),
+            list.append(Bubble(id: "credits", label: "Credits", color: claudeOrange, icon: .pixel("battery"),
                                 pct: pct, big: "\(pct)%", sub: sub))
         }
         if let skills = c.skills, !skills.isEmpty {
             let top = skills.max(by: { $0.pct < $1.pct })
-            list.append(Bubble(id: "skills", label: "Skills", color: claudeOrange, icon: .symbol("pencil"),
+            list.append(Bubble(id: "skills", label: "Skills", color: claudeOrange, icon: .pixel("sparkle"),
                                 pct: top?.pct, big: "\(skills.count)", sub: top.map { "Top: \($0.name) \($0.pct)%" }))
         }
         if let s = c.stats, (s.favoriteModel != nil || s.sessions != nil) {
-            list.append(Bubble(id: "stats", label: "All-time", color: claudeOrange, icon: .symbol("clock.fill"),
+            list.append(Bubble(id: "stats", label: "All-time", color: claudeOrange, icon: .pixel("star"),
                                 pct: nil, big: s.sessions != nil ? "\(s.sessions!)" : "—",
                                 sub: s.favoriteModel.map { "Favorite: \($0)" }))
         }
@@ -114,11 +114,11 @@ struct Bubble: Identifiable {
     static func antigravityMetrics(_ g: GeminiUsage, color: Color) -> [Bubble] {
         var list: [Bubble] = []
         if let pct = g.fiveHourPct {
-            list.append(Bubble(id: "fiveHour", label: "5 Hour", color: color, icon: .symbol("clock.fill"),
+            list.append(Bubble(id: "fiveHour", label: "5 Hour", color: color, icon: .pixel("bolt"),
                                 pct: pct, big: "\(pct)%", sub: g.fiveHourReset))
         }
         if let pct = g.weeklyPct {
-            list.append(Bubble(id: "weekly", label: "Weekly", color: color, icon: .symbol("calendar"),
+            list.append(Bubble(id: "weekly", label: "Weekly", color: color, icon: .pixel("clock"),
                                 pct: pct, big: "\(pct)%", sub: g.weeklyReset))
         }
         return list
@@ -134,7 +134,7 @@ struct Bubble: Identifiable {
         return limits.map { limit in
             let id = codexLimitID(limit.name)
             return Bubble(id: id, label: codexLimitLabel(limit.name), color: color,
-                           icon: .symbol(id == "weekly" ? "calendar" : "clock.fill"),
+                           icon: .pixel(id == "weekly" ? "clock" : id == "monthly" ? "moon" : "bolt"),
                            pct: limit.pctUsed, big: "\(limit.pctUsed)%",
                            sub: limit.reset.map { "Resets \($0)" })
         }
@@ -171,7 +171,7 @@ struct Bubble: Identifiable {
         let sub = c.reset.map { "Resets \($0)" }
         return rows.map { row in
             Bubble(id: row.name.lowercased(), label: row.name, color: color,
-                   icon: .symbol("gauge"),
+                   icon: .pixel("battery"),
                    pct: row.pctUsed, big: "\(row.pctUsed)%", sub: sub)
         }
     }

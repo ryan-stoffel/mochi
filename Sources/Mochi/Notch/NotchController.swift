@@ -2,118 +2,131 @@ import AppKit
 import MochiCore
 import SwiftUI
 
-/// Borderless, transparent, always-on-top panel — the window bounds track
-/// the two fixed states (compact bar-sliver / expanded bump+fan) rather
-/// than the visible content continuously, so there are no invisible dead
-/// zones blocking clicks to whatever's on the desktop behind it while at
-/// rest. Deliberately does NOT become key (default NSPanel behavior) — an
-/// earlier attempt at overriding canBecomeKey made the panel steal focus and
-/// then immediately resign it, auto-collapsing itself a moment after every
-/// expand. "Click outside collapses" is instead handled by a global
-/// mouse-down monitor below, which works regardless of key-window status.
+/// Borderless, transparent panel at the notch, fused with the menu bar.
 ///
-/// `level` matters a lot here: `.floating` sits *below* the system menu
-/// bar's own window level, so anything drawn there renders underneath the
-/// real menu bar instead of flush with/around the notch — exactly the "it's
-/// still beneath the notch" bug. Atoll's own notch window
-/// (`components/Notch/DynamicIslandWindow.swift`) uses `.mainMenu + 3`;
-/// matching that is what actually gets us drawing at the same layer as the
-/// real menu bar/notch.
+/// It is always the full open size (`NotchGeometry.expandedSize`) and never resizes: a window resizing under the
+/// pointer is what made the old hover tracking see the pointer leave and come back, which closed the notch as it
+/// opened. Instead it lets clicks straight through everywhere except the pill (and, while open, the fan), so its
+/// transparent area never blocks the desktop or the menu bar.
+///
+/// Whether it's open comes from one place, `NotchHover`, fed the pointer position 30 times a second. Nothing else
+/// (SwiftUI hover, tracking areas, the click-outside monitor) decides it on its own, so they can't disagree.
+///
+/// `level` is `.mainMenu + 3`, like Atoll's notch window: `.floating` sits below the menu bar's own window, which
+/// would draw the pill underneath the real menu bar instead of flush with the notch.
 final class NotchPanel: NSPanel {}
+
+/// What the views show: open or not, and whether the provider ring is out. `NotchController` sets it from
+/// `NotchHover`; nothing else should.
+@MainActor
+final class NotchState: ObservableObject {
+    @Published var open = false
+    @Published var ring = false
+}
 
 @MainActor
 final class NotchController: NSObject {
-    private var panel: NotchPanel!
-    /// Injected rather than created here: both shells observe the one shared
-    /// service, which is what keeps a single refresh loop driving the CLIs no
-    /// matter which display mode is on screen.
+    private var panel: NotchPanel?
+    /// Injected rather than created here: both shells observe the one shared service.
     private let usage: UsageService
-    private var globalClickMonitor: Any?
+    private let state = NotchState()
+    private var hover = NotchHover()
+    private var layout: NotchHover.Layout?
+    private var timer: Timer?
+    private var observers: [NSObjectProtocol] = []
+    private var clickMonitor: Any?
 
     init(usage: UsageService) {
         self.usage = usage
         super.init()
     }
 
-    /// Tears the panel down and stops watching for outside clicks. Called when
-    /// the user switches back to the menu-bar shell, so the notch stops
-    /// drawing without the app restarting.
-    func hide() {
-        if let globalClickMonitor {
-            NSEvent.removeMonitor(globalClickMonitor)
-            self.globalClickMonitor = nil
-        }
-        panel?.orderOut(nil)
-        panel = nil
-    }
-
     func show() {
-        guard panel == nil else {
-            panel.orderFrontRegardless()
-            return
-        }
-        let initialSize = NotchGeometry.compactSize()
-        panel = NotchPanel(
-            contentRect: NSRect(origin: .zero, size: initialSize),
-            styleMask: [.nonactivatingPanel, .borderless],
-            backing: .buffered,
-            defer: false
-        )
+        if let panel { return panel.orderFrontRegardless() }
+        let panel = NotchPanel(contentRect: .zero, styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.level = .mainMenu + 3
-        // `HoverZone`'s precise circular hover-catch (`NSTrackingArea`'s
-        // `.mouseMoved` option) only actually delivers `mouseMoved` calls if
-        // the window opts into them — without this, the tracking area
-        // still exists but never fires, which is exactly "detecting none of
-        // my hovers": nothing was geometrically wrong, the window just
-        // wasn't forwarding the events needed to evaluate it.
-        panel.acceptsMouseMovedEvents = true
+        panel.ignoresMouseEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         panel.isMovable = false
-
-        let root = IslandShellView(usage: usage) { [weak self] size in
-            self?.resize(to: size)
-        }
-        let hosting = NSHostingView(rootView: root)
-        panel.contentView = hosting
-
-        reposition(size: initialSize)
+        panel.contentView = NSHostingView(rootView: IslandShellView(usage: usage, state: state))
+        self.panel = panel
+        place()
         panel.orderFrontRegardless()
 
-        globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
-            self?.handleOutsideClick(event)
+        // ponytail: a 30 Hz poll of the pointer, not event monitors. Mouse-moved events only reach the app the
+        // pointer's over, so monitors miss some; reading the position always works and costs next to nothing.
+        let t = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in MainActor.assumeIsolated { self?.track() } }
+        RunLoop.main.add(t, forMode: .common)   // .common: keep tracking while a menu is open elsewhere
+        timer = t
+
+        // A click anywhere else closes it at once, rather than after the pointer's grace period.
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            MainActor.assumeIsolated { self?.close() }
         }
+        let nc = NotificationCenter.default
+        observers = [
+            nc.addObserver(forName: .panelShouldCollapse, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.close() }
+            },
+            nc.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.place() }
+            },
+        ]
     }
 
-    private func handleOutsideClick(_ event: NSEvent) {
-        guard let panel else { return }
-        // Global-monitor events report the click in screen coordinates
-        // relative to the event's own originating screen, not our panel's —
-        // convert via the mouse location, which is always in the same
-        // global space as NSWindow.frame.
-        let clickLocation = NSEvent.mouseLocation
-        if !panel.frame.contains(clickLocation) {
-            NotificationCenter.default.post(name: .panelShouldCollapse, object: nil)
-        }
+    /// Tears the panel down: switching back to the menu bar icon stops the notch drawing without a restart.
+    func hide() {
+        timer?.invalidate()
+        timer = nil
+        if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
+        clickMonitor = nil
+        observers.forEach(NotificationCenter.default.removeObserver)
+        observers = []
+        panel?.orderOut(nil)
+        panel = nil
+        hover = NotchHover()
+        apply()
     }
 
-    /// Instant, non-animated frame change — the panel canvas only ever
-    /// snaps between the two fixed sizes; all perceived smoothness comes
-    /// from the SwiftUI content animating within that canvas (bump growth,
-    /// wedge fan-in, badge/percentage merge), not from animating the window
-    /// frame itself.
-    private func resize(to size: CGSize) {
+    /// Top-centre of the notch's screen, at the full open size. Again whenever screens change.
+    private func place() {
         guard let panel else { return }
-        let origin = NotchGeometry.topCenterOrigin(for: size)
+        let screen = NotchGeometry.notchScreen
+        let size = NotchGeometry.expandedSize(for: screen)
+        let origin = NotchGeometry.topCenterOrigin(for: size, on: screen)
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
+        let bar = NotchGeometry.compactSize(for: screen)
+        let g = RingGeometry.self
+        layout = NotchHover.Layout(
+            bar: CGRect(x: (size.width - bar.width) / 2, y: 0, width: bar.width, height: bar.height),
+            hub: CGPoint(x: size.width / 2, y: bar.height),
+            hubRadius: g.providerROuter, ringRadius: g.providerROuter, fanRadius: g.infoROuter + 4)
     }
 
-    private func reposition(size: CGSize) {
-        guard let panel else { return }
-        let origin = NotchGeometry.topCenterOrigin(for: size)
-        panel.setFrame(NSRect(origin: origin, size: size), display: true)
+    private func track() {
+        guard let panel, let layout else { return }
+        let m = NSEvent.mouseLocation, f = panel.frame
+        let p = CGPoint(x: m.x - f.minX, y: f.maxY - m.y)
+        let spot = NotchHover.spot(of: p, in: layout, open: hover.open, ring: hover.ring)
+        hover.update(spot, at: CACurrentMediaTime(), point: p)
+        apply()
+        // Take clicks only over what's showing; everywhere else they go to whatever is underneath.
+        let live = hover.open ? spot != .away : spot == .bar
+        if panel.ignoresMouseEvents == live { panel.ignoresMouseEvents = !live }
+    }
+
+    private func close() {
+        guard hover.open else { return }
+        hover.close()
+        apply()
+    }
+
+    private func apply() {
+        if state.open != hover.open { state.open = hover.open }
+        if state.ring != hover.ring { state.ring = hover.ring }
     }
 }
 

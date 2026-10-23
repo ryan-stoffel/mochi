@@ -31,7 +31,7 @@ enum NotchGeometry {
             ?? NSScreen.screens[0]
     }
 
-    static func info(for screen: NSScreen = NSScreen.main ?? NSScreen.screens[0]) -> Info {
+    static func info(for screen: NSScreen = notchScreen) -> Info {
         let hasNotch = screen.safeAreaInsets.top > 0
         var notchWidth: CGFloat = 200 // reasonable fallback on non-notched Macs
         if let left = screen.auxiliaryTopLeftArea?.width,
@@ -49,53 +49,43 @@ enum NotchGeometry {
     /// itself rather than as a pill hanging below it. Growing `size.height`
     /// (compact → expanded) extends the window straight down from that same
     /// fixed top edge.
-    static func topCenterOrigin(for size: CGSize, on screen: NSScreen = NSScreen.main ?? NSScreen.screens[0]) -> CGPoint {
+    static func topCenterOrigin(for size: CGSize, on screen: NSScreen = notchScreen) -> CGPoint {
         let x = screen.frame.midX - size.width / 2
         let y = screen.frame.maxY - size.height
         return CGPoint(x: x, y: y)
     }
 
-    /// Fixed layout constants shared by the menu-bar chrome and the wedge
-    /// fan. Footprint stays tight (a nub, not a dome) but the content
-    /// inside it (icons/text/hub) is sized to stay legible.
+    /// Fixed layout constants shared by the menu-bar chrome and the wedge fan.
     enum Layout {
         static let flankWidth: CGFloat = 64        // badge/percentage slot, each side of the notch
-        // Sized for `RingGeometry.infoROuter` (the fan's outermost layer) at
-        // the arc's center angle — its bottom-center, and therefore the
-        // tallest point any wedge ever reaches below the bar — plus a small
-        // buffer, the same margin the ring's own layers use between
-        // themselves.
-        static let fanHeight: CGFloat = 220         // wedge fan + hub area below the bar
-        static let fanExtraWidth: CGFloat = 34      // widen beyond notch+flanks so the fan has room to spread
+        static let fanExtraWidth: CGFloat = 34     // widen beyond notch+flanks so the fan has room to spread
     }
 
     /// Panel size for the rest (flanking) state — just tall enough for the
     /// menu-bar sliver, wide enough for notch + both flanking slots.
-    static func compactSize(for screen: NSScreen = NSScreen.main ?? NSScreen.screens[0]) -> CGSize {
+    static func compactSize(for screen: NSScreen = notchScreen) -> CGSize {
         let i = info(for: screen)
         return CGSize(width: i.notchWidth + Layout.flankWidth * 2, height: i.reservedTopHeight)
     }
 
-    /// Panel size for the expanded state — same horizontal center, grown
-    /// downward (and slightly outward if the fan needs more width than the
-    /// compact frame already provides) to fit the hub + wedge fan.
+    /// The panel's one size: the bar plus the whole fan below it, so the window never resizes under the pointer.
+    /// It lets clicks through everywhere but the pill (or the open fan); see `NotchController`.
     ///
     /// Width is clamped to at least `RingGeometry.width` — the ring's own
-    /// layers are chained outward from the hub and can grow (a thicker
-    /// layer, a bigger hub, an extra layer), so the panel has to grow with
-    /// them or the outermost wedges get hard-clipped at the window edge.
-    static func expandedSize(for screen: NSScreen = NSScreen.main ?? NSScreen.screens[0]) -> CGSize {
+    /// layers are chained outward from the hub and can grow, so the panel has
+    /// to grow with them or the outermost wedges get hard-clipped.
+    static func expandedSize(for screen: NSScreen = notchScreen) -> CGSize {
         let i = info(for: screen)
         let compact = compactSize(for: screen)
         let fanWidth = i.notchWidth + Layout.fanExtraWidth * 2
         let width = max(compact.width, fanWidth, RingGeometry.width)
-        let height = i.reservedTopHeight + Layout.fanHeight
+        let height = i.reservedTopHeight + RingGeometry.height
         return CGSize(width: width, height: height)
     }
 
     /// The real hardware notch's rect in the *panel's local* coordinate
     /// space (SwiftUI y-down), for a panel of `panelSize` centered over it.
-    static func notchLocalRect(panelSize: CGSize, for screen: NSScreen = NSScreen.main ?? NSScreen.screens[0]) -> CGRect {
+    static func notchLocalRect(panelSize: CGSize, for screen: NSScreen = notchScreen) -> CGRect {
         let i = info(for: screen)
         let x = (panelSize.width - i.notchWidth) / 2
         return CGRect(x: x, y: 0, width: i.notchWidth, height: i.reservedTopHeight)
