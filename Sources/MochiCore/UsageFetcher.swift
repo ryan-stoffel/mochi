@@ -1,13 +1,10 @@
 import Foundation
 
-/// Runs the `ptydrive` helper for one provider and parses what comes back.
+/// Gets each provider's usage from the best source that answers (see the chains under "Each provider's sources").
 ///
-/// This is the layer that replaces `runClaudeCommand` / `runAgyCommand` /
-/// `runCodexCommand` / `runCursorCommand` in os-menu's `main.js`. The timeout
-/// ladder is carried over intact, because the numbers relate to each other:
-/// the helper's own internal cap must expire *before* the watchdog here kills
-/// it, so the helper's graceful path — which prints whatever it captured —
-/// gets to run instead of being killed mid-capture.
+/// The last resort is the provider's CLI, run in a hidden terminal by the `ptydrive` helper with its screen parsed.
+/// Its timeout ladder matters: the helper's own cap must expire *before* the watchdog here kills it, so the
+/// helper's graceful path, which prints whatever it captured, gets to run instead of being killed mid-capture.
 public enum UsageFetcher {
 
     /// Watchdog per provider, in seconds. Each sits above the corresponding
@@ -99,7 +96,7 @@ public enum UsageFetcher {
         // Read on a background queue so a helper that fills the 64KB pipe
         // buffer can't deadlock against our own wait.
         var captured = Data()
-        let readQueue = DispatchQueue(label: "com.eli.aiusage.fetch.read")
+        let readQueue = DispatchQueue(label: "mochi.fetch.read")
         let readDone = DispatchSemaphore(value: 0)
         readQueue.async {
             captured = outPipe.fileHandleForReading.readDataToEndOfFile()
@@ -125,14 +122,107 @@ public enum UsageFetcher {
         return String(decoding: captured, as: UTF8.self)
     }
 
-    // MARK: - Typed fetches
+    // MARK: - Each provider's sources, best first
 
-    /// Fetches `/usage` then `/stats` and merges them.
-    ///
-    /// Sequential, not parallel: running two `claude` PTYs at once risks both
-    /// racing the same directory-trust prompt. If `/usage` fails outright,
-    /// `/stats` is skipped since it's the less critical of the two.
-    public static func fetchClaude() -> ClaudeUsage {
+    /// What a provider's sources came to, together.
+    public enum Fetched<T: Sendable>: Sendable {
+        /// Fresh numbers (or the newest ones there are: Codex's logs date from its last turn).
+        case data(T)
+        /// There, but not signed in; the message says what to do about it.
+        case signedOut(String?)
+        case offline
+        case rateLimited
+        /// Signed in, but nothing answered this time.
+        case failed(String)
+    }
+
+    /// The order every provider's sources go in: its API; then its local record, if it has one; then, when
+    /// `allowCLI`, its CLI's own screen. Offline or rate limited stops before the CLI. Signed out stops right
+    /// away unless `cliWhenSignedOut`: launching a signed-out codex, cursor-agent or agy opens a sign-in tab.
+    static func chain<T>(api: () -> SourceResult<T>, local: (() -> SourceResult<T>)? = nil,
+                         cli: () -> Fetched<T>, allowCLI: Bool, cliWhenSignedOut: Bool = false) -> Fetched<T> {
+        let a = api()
+        if case .ok(let v) = a { return .data(v) }
+        if case .signedOut = a, !cliWhenSignedOut { return .signedOut(nil) }
+        if let local, case .ok(let v) = local() { return .data(v) }
+        if case .offline = a { return .offline }
+        // Rate limited: the CLI's own screen asks the same service (Claude's /usage does), so leave it be too.
+        if case .rateLimited = a { return .rateLimited }
+        return allowCLI ? cli() : fallback(a)
+    }
+
+    /// Claude: its usage endpoint, then Claude Code's /usage screen. The status line, the third source, arrives on
+    /// its own through `UsageService.applyClaudeStatusLine`. A signed-out Claude Code only shows its welcome screen,
+    /// so it's still asked: that's how it says it's signed out.
+    public static func claude(allowCLI: Bool) -> Fetched<ClaudeUsage> {
+        chain(api: { ClaudeAPI.fetch() }, cli: {
+            guard CLILocator.isInstalled("claude") else { return .signedOut(nil) }
+            let u = cliClaude()
+            if u.errorType == "auth" { return .signedOut("Run claude in a terminal to sign in.") }
+            if let error = u.error { return u.errorType == "offline" ? .offline : .failed(error) }
+            return .data(u)
+        }, allowCLI: allowCLI, cliWhenSignedOut: true)
+    }
+
+    /// Codex: ChatGPT's usage endpoint, then the rate limits in Codex's own session logs, then its /status screen.
+    public static func codex(allowCLI: Bool) -> Fetched<CodexUsage> {
+        chain(api: { CodexAPI.fetch() }, local: { CodexLogs.latest() }, cli: {
+            guard CLILocator.isInstalled("codex") else { return .failed("Couldn't read Codex's usage.") }
+            return cliResult(fetchCodex(), signedIn: { $0.signedIn }, error: { $0.error }) { $0.source = UsageSource.cli; $0.lastUpdated = Date() }
+        }, allowCLI: allowCLI)
+    }
+
+    /// Cursor: its dashboard service (with cursor-agent's sign-in, then the editor's), then cursor-agent's /usage.
+    public static func cursor(allowCLI: Bool) -> Fetched<CursorUsage> {
+        chain(api: { CursorAPI.fetch() }, cli: {
+            guard CLILocator.isInstalled("cursor-agent") else { return .failed("Couldn't read Cursor's usage.") }
+            return cliResult(fetchCursor(), signedIn: { $0.signedIn }, error: { $0.error }) { $0.source = UsageSource.cli; $0.lastUpdated = Date() }
+        }, allowCLI: allowCLI)
+    }
+
+    private static func cliResult<T>(_ u: T, signedIn: (T) -> Bool?, error: (T) -> String?, stamp: (inout T) -> Void) -> Fetched<T> {
+        if signedIn(u) == false { return .signedOut(nil) }
+        if let e = error(u) { return .failed(e) }
+        var out = u
+        stamp(&out)
+        return .data(out)
+    }
+
+    /// Antigravity: agy's /usage screen is the only source (its sign-in is encrypted), so it's only read when
+    /// `allowCLI`, and never while agy is signed out (that would open a sign-in tab). Nil: nothing new this time.
+    public static func antigravity(allowCLI: Bool) -> Fetched<GeminiUsage>? {
+        guard AntigravityAuth.signedIn else { return .signedOut(nil) }
+        guard allowCLI else { return nil }
+        let u = fetchAntigravity()
+        if u.needsSetup == true { return .signedOut("Finish agy's first-run setup: run agy once in a terminal.") }
+        if u.signedIn == false { return .signedOut(nil) }
+        if let error = u.error { return .failed(error) }
+        var out = u
+        out.source = UsageSource.cli
+        out.lastUpdated = Date()
+        return .data(out)
+    }
+
+    private static func fallback<T>(_ r: SourceResult<T>) -> Fetched<T> {
+        switch r {
+        case .ok(let v): return .data(v)
+        case .signedOut: return .signedOut(nil)
+        case .offline: return .offline
+        case .rateLimited: return .rateLimited
+        case .failed(let msg): return .failed(msg)
+        }
+    }
+
+    // MARK: - The CLIs' own screens (last resort)
+
+    /// Claude Code's /usage screen. (Its /stats screen used to come along too; it's not usage, so it doesn't.)
+    public static func cliClaude() -> ClaudeUsage {
+        guard Reachability.isOnline() else {
+            var offline = ClaudeUsage()
+            offline.error = "You're offline."
+            offline.errorType = "offline"
+            return offline
+        }
         var usage = withRetryOnError({ () -> ClaudeUsage in
             do {
                 let raw = try capture(provider: "claude", command: "/usage")
@@ -149,26 +239,19 @@ public enum UsageFetcher {
                 return failed
             }
         }, errorOf: { $0.error })
-
-        // A hard failure on /usage means there's nothing to enrich.
-        if usage.error != nil && usage.session == nil && usage.weekly == nil {
-            return usage
+        if usage.hasAnyData {
+            usage.lastUpdated = Date()
+            usage.source = UsageSource.cli
         }
-
-        let stats = withRetryOnError({ () -> Stats? in
-            (try? capture(provider: "claude", command: "/stats")).flatMap(UsageParser.parseStats)
-        }, errorOf: { _ in nil })
-
-        usage.stats = stats
-        if usage.hasAnyData { usage.lastUpdated = Date() }
         return usage
     }
 
     public static func fetchAntigravity() -> GeminiUsage {
+        // An unfinished setup comes back the same every time: no point in a second 55-second try.
         withRetryOnError({ () -> GeminiUsage in
             do { return ProviderParsers.parseAgy(try capture(provider: "antigravity")) }
             catch { return GeminiUsage(error: String(describing: error)) }
-        }, errorOf: { $0.error })
+        }, errorOf: { $0.needsSetup == true ? nil : $0.error })
     }
 
     public static func fetchCodex() -> CodexUsage {

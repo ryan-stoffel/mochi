@@ -61,6 +61,10 @@ public struct GeminiUsage: Codable, Equatable, Sendable {
     public var fiveHourReset: String?
     public var error: String?
     public var lastUpdated: Date?
+    /// Where these numbers came from (`UsageSource`).
+    public var source: String?
+    /// agy is signed in but has never finished its first-run setup, so it can't show `/usage` yet.
+    public var needsSetup: Bool?
 
     public init(signedIn: Bool? = nil, weeklyPct: Int? = nil, fiveHourPct: Int? = nil,
                 weeklyReset: String? = nil, fiveHourReset: String? = nil,
@@ -86,10 +90,12 @@ public struct CodexLimit: Codable, Equatable, Identifiable, Sendable {
     public var name: String
     public var pctUsed: Int
     public var reset: String?
+    /// When the window starts over, when the source says (the API and session logs do; the CLI screen doesn't).
+    public var resetsAt: Date?
     public var id: String { name }
 
-    public init(name: String, pctUsed: Int, reset: String? = nil) {
-        self.name = name; self.pctUsed = pctUsed; self.reset = reset
+    public init(name: String, pctUsed: Int, reset: String? = nil, resetsAt: Date? = nil) {
+        self.name = name; self.pctUsed = pctUsed; self.reset = reset; self.resetsAt = resetsAt
     }
 }
 
@@ -99,6 +105,8 @@ public struct CodexUsage: Codable, Equatable, Sendable {
     public var limits: [CodexLimit]?
     public var error: String?
     public var lastUpdated: Date?
+    /// Where these numbers came from (`UsageSource`).
+    public var source: String?
 
     public init(signedIn: Bool? = nil, plan: String? = nil, limits: [CodexLimit]? = nil,
                 error: String? = nil, lastUpdated: Date? = nil) {
@@ -143,6 +151,10 @@ public struct CursorUsage: Codable, Equatable, Sendable {
     public var rows: [CursorUsageRow]?
     public var error: String?
     public var lastUpdated: Date?
+    /// When the billing cycle ends and every row starts over.
+    public var resetsAt: Date?
+    /// Where these numbers came from (`UsageSource`).
+    public var source: String?
 
     public init(signedIn: Bool? = nil, plan: String? = nil, reset: String? = nil,
                 rows: [CursorUsageRow]? = nil, error: String? = nil, lastUpdated: Date? = nil) {
@@ -173,6 +185,11 @@ public struct ClaudeUsage: Codable, Equatable, Sendable {
     /// "offline" | "auth" | nil (unclassified) — mirrors `usageData.errorType`.
     public var errorType: String?
     public var lastUpdated: Date?
+    /// When each window starts over, when the source says (the API and the status line do).
+    public var sessionResetsAt: Date?
+    public var weeklyResetsAt: Date?
+    /// Where these numbers came from (`UsageSource`).
+    public var source: String?
 
     public init() {}
 
@@ -267,4 +284,16 @@ public struct ProviderStatus: Codable, Equatable, Sendable {
         case .disabled: return "moon.zzz"
         }
     }
+}
+
+/// Where a provider's numbers came from, best first. Shown nowhere yet; kept for the UI and for debugging.
+public enum UsageSource {
+    /// The provider's own usage endpoint, with the sign-in its CLI or app already keeps on this Mac.
+    public static let api = "api"
+    /// Claude Code's status line, pushed to the app while you use it.
+    public static let statusLine = "statusLine"
+    /// Codex's own session logs: the rate limits it last saw.
+    public static let logs = "logs"
+    /// The CLI's own usage screen, read in a hidden terminal. Last resort.
+    public static let cli = "cli"
 }

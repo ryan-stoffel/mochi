@@ -19,7 +19,7 @@ public enum UsageParser {
     // MARK: - /usage
 
     private enum Section {
-        case sessionGauge, weeklyGauge, creditsGauge, skills, mcp
+        case sessionGauge, weeklyGauge, scopedWeek, creditsGauge, skills, mcp
     }
 
     /// `/^(.+?)\s{2,}(\d+)%$/`
@@ -41,7 +41,14 @@ public enum UsageParser {
         // ~zero and not worth parsing or showing.
         for line in toCleanLines(raw) {
             if line == "Current session" { section = .sessionGauge; continue }
-            if line.hasPrefix("Current week") { section = .weeklyGauge; continue }
+            // The week is "Current week (all models)" (or plain "Current week"). Plans with a per-model cap add
+            // another, "Current week (Opus)" and the like, after it: that one isn't your weekly limit, and reading it
+            // as one is how a 48% week came out as 0%.
+            if line.hasPrefix("Current week") {
+                let scoped = line.contains("(") && !line.localizedCaseInsensitiveContains("all models")
+                section = scoped ? .scopedWeek : .weeklyGauge
+                continue
+            }
             if line == "Usage credits" {
                 section = .creditsGauge
                 if result.credits == nil { result.credits = Credits() }

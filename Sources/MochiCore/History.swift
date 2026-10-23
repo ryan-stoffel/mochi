@@ -1,16 +1,22 @@
 import Foundation
 
-/// One sampled reading, timestamped.
+/// One sampled reading, timestamped. `session` is the provider's short window (Claude's 5 hours, Codex's 5h,
+/// Cursor's billing cycle), `weekly` its long one.
 public struct HistoryPoint: Codable, Equatable, Sendable {
     public var timestamp: Date
     public var session: Int?
     public var weekly: Int?
+    /// Which provider it's for; nil in samples saved before every provider kept a history, which were all Claude's.
+    public var provider: String?
 
-    public init(timestamp: Date, session: Int?, weekly: Int?) {
+    public init(timestamp: Date, session: Int?, weekly: Int?, provider: String? = nil) {
         self.timestamp = timestamp
         self.session = session
         self.weekly = weekly
+        self.provider = provider
     }
+
+    var providerID: String { provider ?? "claude" }
 }
 
 /// The usage history behind the sparkline.
@@ -22,11 +28,10 @@ public final class HistoryStore: @unchecked Sendable {
 
     public static let shared = HistoryStore()
 
-    /// ~7 days of 5-minute samples, generously rounded up — same budget the
-    /// localStorage version used.
-    private static let maxPoints = 2200
+    /// ~7 days of 5-minute samples for each of the four providers, generously rounded up.
+    private static let maxPoints = 8800
 
-    private let queue = DispatchQueue(label: "com.eli.aiusage.history")
+    private let queue = DispatchQueue(label: "mochi.history")
     private var points: [HistoryPoint] = []
 
     private static var fileURL: URL {
@@ -44,10 +49,15 @@ public final class HistoryStore: @unchecked Sendable {
         queue.sync { points }
     }
 
-    /// Points inside a trailing window, oldest first.
+    /// Claude's points inside a trailing window, oldest first.
     public func points(within window: TimeInterval, now: Date = Date()) -> [HistoryPoint] {
+        points(for: "claude", within: window, now: now)
+    }
+
+    /// One provider's points inside a trailing window, oldest first.
+    public func points(for provider: String, within window: TimeInterval, now: Date = Date()) -> [HistoryPoint] {
         let cutoff = now.addingTimeInterval(-window)
-        return queue.sync { points.filter { $0.timestamp >= cutoff } }
+        return queue.sync { points.filter { $0.timestamp >= cutoff && $0.providerID == provider } }
     }
 
     /// Records a reading.
@@ -57,15 +67,15 @@ public final class HistoryStore: @unchecked Sendable {
     /// own point wastes the window's budget on redundant samples. Those get
     /// collapsed into the existing last point by bumping its timestamp; a real
     /// change, or enough time passing, still always gets its own point.
-    public func record(session: Int?, weekly: Int?, now: Date = Date()) {
+    public func record(provider: String = "claude", session: Int?, weekly: Int?, now: Date = Date()) {
         guard session != nil || weekly != nil else { return }
         queue.sync {
-            if let last = points.last,
-               last.session == session, last.weekly == weekly,
-               now.timeIntervalSince(last.timestamp) < 4 * 60 {
-                points[points.count - 1].timestamp = now
+            if let i = points.lastIndex(where: { $0.providerID == provider }),
+               points[i].session == session, points[i].weekly == weekly,
+               now.timeIntervalSince(points[i].timestamp) < 4 * 60 {
+                points[i].timestamp = now
             } else {
-                points.append(HistoryPoint(timestamp: now, session: session, weekly: weekly))
+                points.append(HistoryPoint(timestamp: now, session: session, weekly: weekly, provider: provider))
             }
             if points.count > Self.maxPoints {
                 points.removeFirst(points.count - Self.maxPoints)

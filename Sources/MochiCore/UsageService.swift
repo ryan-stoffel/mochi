@@ -1,16 +1,12 @@
 import Combine
 import Foundation
 
-/// The single owner of every fetch.
+/// The single owner of every fetch: the menu bar, the notch and the pet all observe this one instance.
 ///
-/// Both shells — the status item and the notch panel — observe this same
-/// instance. That's the whole reason the native rebuild can drop the stdio
-/// helper protocol the Electron-hosted design needed: there is one process,
-/// one refresh loop, and no second copy of the data to drift.
-///
-/// The published surface is deliberately unchanged from the notch app's
-/// original `UsageService`, so the existing ring/wedge views compile against it
-/// untouched.
+/// Each provider refreshes on its own, from the best source that answers (`UsageFetcher`), and shows its numbers
+/// the moment they land: one slow CLI never holds up the others. Numbers that stop updating aren't blanked; they
+/// stay, with what went wrong as the status message, and they're kept across restarts. A window whose reset time
+/// has passed shows as started over.
 @MainActor
 public final class UsageService: ObservableObject {
 
@@ -21,58 +17,56 @@ public final class UsageService: ObservableObject {
     @Published public private(set) var providers: [String: ProviderStatus] = [:]
     @Published public private(set) var isRefreshing = false
 
-    /// When the current refresh cycle finished, independent of which
-    /// provider(s) it actually had new data for — this backs the generic
-    /// "Synced" filler wedge, which every provider's fan can use regardless of
-    /// what real metrics it has.
+    /// When the last refresh cycle finished, whichever providers it had news for.
     @Published public private(set) var lastRefreshed: Date?
 
     /// Bumped whenever settings change in a way the shells should redraw for.
     @Published public private(set) var settingsRevision = 0
 
-    /// Providers that the last drive proved are installed but signed out.
-    ///
-    /// Driving a signed-out CLI is not a no-op: `agy` (and `codex`, and
-    /// `cursor-agent`) responds to being launched by opening a browser tab for
-    /// its OAuth handoff, which the user then can't complete — the code has to
-    /// be pasted back into a terminal, and ours is a headless PTY nobody can
-    /// see. On the five-minute poll that means a new sign-in tab every five
-    /// minutes, forever. So once a drive tells us a provider is signed out, the
-    /// timer stops driving it; only an explicit user action (the Refresh menu
-    /// item, a Retry button, the wizard's Recheck, re-enabling it in Settings)
-    /// tries again, and a successful drive clears the flag.
+    /// Providers known to be signed out (or, for agy, not set up). Launching a signed-out CLI isn't harmless: it
+    /// opens a sign-in tab in your browser, every poll. So the poll leaves their CLI alone; a manual refresh (the
+    /// Refresh button, Retry, the wizard's Recheck, switching it back on) looks again.
     private var signedOut: Set<String> = []
+    /// When each provider's CLI screen was last read. It takes seconds and a whole CLI, so the poll reads it at most
+    /// every `cliInterval`; the APIs are cheap and go every poll.
+    private var cliAt: [String: Date] = [:]
+    /// Rate-limited providers, and when to ask again.
+    private var backoff: [String: Date] = [:]
+    /// When each provider was last asked, so each keeps to its own pace (`pollEvery`).
+    private var checkedAt: [String: Date] = [:]
+    private var inFlight: Set<String> = []
 
     private var timer: Timer?
-    private var refreshTask: Task<Void, Never>?
+    private var clock: Timer?
 
-    public static let pollInterval: TimeInterval = 5 * 60
+    public static let pollInterval: TimeInterval = 2 * 60
+
+    /// How often the poll asks each provider. Claude's usage endpoint rate-limits a sign-in after a few calls, so
+    /// it's asked least; while you use Claude Code its status line keeps the numbers fresh anyway.
+    static func pollEvery(_ id: String) -> TimeInterval { id == "claude" ? 5 * 60 : pollInterval }
+    static let cliInterval: TimeInterval = 15 * 60
+    static let backoffInterval: TimeInterval = 10 * 60
 
     public init() {
-        // Nothing is `.checking` until we say so — an empty dictionary is what
-        // lets a shell tell "haven't looked yet" apart from "looked, and it's
-        // not installed".
+        loadCache()
         Task { await refresh(manual: false) }
         timer = Timer.scheduledTimer(withTimeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in await self?.refresh(manual: false) }
         }
+        clock = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.expireResets() }
+        }
     }
 
-    deinit { timer?.invalidate() }
+    deinit {
+        timer?.invalidate()
+        clock?.invalidate()
+    }
 
     // MARK: - Refresh
 
-    /// Runs one full cycle: Claude and the other three, concurrently.
-    ///
-    /// Re-entrancy is guarded rather than queued — a manual refresh landing
-    /// while the 5-minute poll is already in flight would otherwise spawn a
-    /// second concurrent PTY drive contending over the same CLI session and
-    /// auth state, which was a real contributor to intermittent
-    /// "Could not find quota panel" failures.
-    ///
-    /// `manual` distinguishes a user asking for this from the background poll.
-    /// Only the poll honours `signedOut`; a person pressing Refresh has
-    /// presumably just signed in, and is entitled to have us look again.
+    /// Looks at every enabled provider, all at once. `manual` is someone asking (they may have just signed in, so
+    /// every source is tried); otherwise it's the poll, which respects `signedOut`, `cliInterval` and `backoff`.
     public func refresh(manual: Bool = true) async {
         guard !isRefreshing else { return }
         isRefreshing = true
@@ -80,236 +74,244 @@ public final class UsageService: ObservableObject {
             isRefreshing = false
             lastRefreshed = Date()
         }
-
-        let skip = manual ? [] : signedOut
-        async let claudeResult = Self.fetchClaudeOffMain(
-            enabled: Settings.shared.isEnabled("claude") && !skip.contains("claude"))
-        async let otherResults = Self.fetchOthersOffMain(skipping: skip)
-
-        let (claudeValue, others) = await (claudeResult, otherResults)
-
-        applyClaude(claudeValue)
-        applyOthers(others)
+        applyDetection(await Self.run { Self.detect() })
+        let now = Date()
+        await withTaskGroup(of: Void.self) { group in
+            for id in Provider.ids where Settings.shared.isEnabled(id) && providers[id]?.state != .notInstalled {
+                if !manual, let until = backoff[id], until > now { continue }
+                if !manual, let at = checkedAt[id], now.timeIntervalSince(at) < Self.pollEvery(id) - 5 { continue }
+                let cliDue = cliAt[id].map { now.timeIntervalSince($0) > Self.cliInterval } ?? true
+                let allowCLI = manual || (!signedOut.contains(id) && cliDue)
+                group.addTask { await self.refreshOne(id, allowCLI: allowCLI) }
+            }
+        }
     }
 
-    /// Refreshes exactly one provider — used when a provider is switched back
-    /// on in Settings, so it starts reporting immediately rather than waiting
-    /// out the rest of the poll interval.
+    /// Refreshes exactly one provider, every source allowed: when it's switched back on in Settings, or retried.
     public func refreshProvider(_ id: String) async {
         guard Settings.shared.isEnabled(id) else { return }
+        applyDetection(await Self.run { Self.detect() })
+        await refreshOne(id, allowCLI: true)
+        lastRefreshed = Date()
+    }
+
+    private func refreshOne(_ id: String, allowCLI: Bool) async {
+        guard !inFlight.contains(id), providers[id]?.state != .notInstalled else { return }
+        inFlight.insert(id)
+        checkedAt[id] = Date()
+        defer { inFlight.remove(id) }
         switch id {
         case "claude":
-            let value = await Self.fetchClaudeOffMain(enabled: true)
-            applyClaude(value)
-        default:
-            var partial = OtherResults()
-            switch id {
-            case "antigravity":
-                partial.antigravity = await Self.run { UsageFetcher.fetchAntigravity() }
-            case "codex":
-                partial.codex = await Self.run { UsageFetcher.fetchCodex() }
-            case "cursor":
-                partial.cursor = await Self.run { UsageFetcher.fetchCursor() }
-            default: break
+            let r = await Self.run { UsageFetcher.claude(allowCLI: allowCLI) }
+            noteCLI(id, allowCLI, source: r.source)
+            applyClaude(r)
+        case "codex":
+            let r = await Self.run { UsageFetcher.codex(allowCLI: allowCLI) }
+            noteCLI(id, allowCLI, source: r.source)
+            apply(id, r, hasData: !(codex?.limits?.isEmpty ?? true)) { u in
+                codex = u
+                let pct = { (needle: String) in u.limits?.first { $0.name.lowercased().contains(needle) }?.pctUsed }
+                HistoryStore.shared.record(provider: id, session: pct("h limit"), weekly: pct("weekly"))
             }
-            partial.detected = Self.detect()
-            applyOthers(partial)
+        case "cursor":
+            let r = await Self.run { UsageFetcher.cursor(allowCLI: allowCLI) }
+            noteCLI(id, allowCLI, source: r.source)
+            apply(id, r, hasData: !(cursor?.rows?.isEmpty ?? true)) { u in
+                cursor = u
+                HistoryStore.shared.record(provider: id, session: u.primaryPct, weekly: nil)
+            }
+        case "antigravity":
+            guard let r = await Self.run({ UsageFetcher.antigravity(allowCLI: allowCLI) }) else { return }
+            noteCLI(id, allowCLI, source: r.source)
+            apply(id, r, hasData: antigravity?.fiveHourPct != nil || antigravity?.weeklyPct != nil) { u in
+                antigravity = u
+                HistoryStore.shared.record(provider: id, session: u.fiveHourPct, weekly: u.weeklyPct)
+            }
+        default:
+            break
         }
-        lastRefreshed = Date()
+        expireResets()
+        saveCache()
+    }
+
+    /// Starts the CLI's cooldown when this round may have read its screen (anything but an API or log answer).
+    private func noteCLI(_ id: String, _ allowCLI: Bool, source: String?) {
+        if allowCLI && source != UsageSource.api && source != UsageSource.logs { cliAt[id] = Date() }
+    }
+
+    // MARK: - Applying results
+
+    private func applyClaude(_ r: UsageFetcher.Fetched<ClaudeUsage>) {
+        let hasData = claude.session != nil || claude.weekly != nil
+        if case .data(let u) = r {
+            claude = u
+            HistoryStore.shared.record(provider: "claude", session: u.session, weekly: u.weekly)
+        } else {
+            // Keep the numbers; say what went wrong alongside them.
+            switch r {
+            case .offline: claude.error = "You're offline."; claude.errorType = "offline"
+            case .signedOut(let m): claude.error = m ?? "Not logged in. Run claude in a terminal to log in."; claude.errorType = "auth"
+            case .rateLimited: claude.error = "Asked too often; trying again in a few minutes."; claude.errorType = nil
+            case .failed(let m): claude.error = m; claude.errorType = nil
+            case .data: break
+            }
+        }
+        settle("claude", r, hasData: hasData)
+    }
+
+    private func apply<T>(_ id: String, _ r: UsageFetcher.Fetched<T>, hasData: Bool, store: (T) -> Void) {
+        if case .data(let u) = r { store(u) }
+        settle(id, r, hasData: hasData)
+    }
+
+    /// What a result means for a provider's status. Numbers already showing stay `.loggedIn`, with the problem as
+    /// the message (a "last known" banner) rather than being swapped for an error screen.
+    private func settle<T>(_ id: String, _ r: UsageFetcher.Fetched<T>, hasData: Bool) {
+        func keep(_ message: String) -> ProviderStatus {
+            hasData ? ProviderStatus(state: .loggedIn, message: message) : ProviderStatus(state: .error(message), message: message)
+        }
+        switch r {
+        case .data:
+            providers[id] = ProviderStatus(state: .loggedIn)
+            signedOut.remove(id)
+            backoff[id] = nil
+        case .signedOut(let message):
+            providers[id] = ProviderStatus(state: .installed, message: message)
+            signedOut.insert(id)
+        case .offline:
+            providers[id] = keep("You're offline; showing the last numbers.")
+        case .rateLimited:
+            backoff[id] = Date().addingTimeInterval(Self.backoffInterval)
+            providers[id] = keep("Asked too often; trying again in a few minutes.")
+        case .failed(let message):
+            providers[id] = keep(message)
+        }
+    }
+
+    // MARK: - Claude Code's status line
+
+    /// Claude Code's status line, as the pet's hook server receives it: `rate_limits` with `five_hour` and
+    /// `seven_day`, each `used_percentage` and `resets_at`. The freshest source there is while you use Claude Code,
+    /// and free. Each update is the whole picture: a window it leaves out has reset.
+    public func applyClaudeStatusLine(_ rateLimits: [String: Any]) {
+        guard Settings.shared.isEnabled("claude"), let p = ClaudeAPI.parseStatusLine(rateLimits) else { return }
+        let now = Date()
+        var u = claude
+        u.session = p.session?.0 ?? 0
+        u.sessionResetsAt = p.session?.1
+        u.sessionReset = p.session?.1.map { UsageDates.resetText($0, now: now) }
+        u.weekly = p.week?.0 ?? 0
+        u.weeklyResetsAt = p.week?.1
+        u.weeklyReset = p.week?.1.map { UsageDates.resetText($0, now: now) }
+        // It redraws constantly; only take news, or a heartbeat once a minute.
+        if u.session == claude.session, u.weekly == claude.weekly, u.sessionResetsAt == claude.sessionResetsAt,
+           claude.source == UsageSource.statusLine, claude.error == nil,
+           let at = claude.lastUpdated, now.timeIntervalSince(at) < 60 { return }
+        u.source = UsageSource.statusLine
+        u.lastUpdated = now
+        u.error = nil
+        u.errorType = nil
+        applyClaude(.data(u))
+        saveCache()
+    }
+
+    // MARK: - Resets
+
+    /// A window whose reset time has passed has started over: show it at 0 until the next reading says otherwise.
+    func expireResets(now: Date = Date()) {
+        let c = UsageExpiry.claude(claude, now: now)
+        if c != claude { claude = c }
+        if let x = codex.map({ UsageExpiry.codex($0, now: now) }), x != codex { codex = x }
+        if let x = cursor.map({ UsageExpiry.cursor($0, now: now) }), x != cursor { cursor = x }
     }
 
     // MARK: - Detection
 
-    /// Detection only proves the binary exists — it says nothing about whether
-    /// the user is actually signed in, so `.installed` (not `.loggedIn`) is the
-    /// most any of these can claim without actually driving the CLI.
+    /// Whether each provider is on this Mac at all: its CLI, or for Cursor its editor, or a sign-in a source can use.
     nonisolated private static func detect() -> [String: ProviderStatus] {
         var result: [String: ProviderStatus] = [:]
-        for provider in Provider.all {
-            guard Settings.shared.isEnabled(provider.id) else {
-                result[provider.id] = ProviderStatus(state: .disabled)
+        for p in Provider.all {
+            guard Settings.shared.isEnabled(p.id) else {
+                result[p.id] = ProviderStatus(state: .disabled)
                 continue
             }
-            let installed = CLILocator.isInstalled(provider.binary)
-            result[provider.id] = ProviderStatus(
-                state: installed ? .installed : .notInstalled,
-                message: installed ? nil : provider.hint)
+            result[p.id] = isPresent(p.id) ? ProviderStatus(state: .checking) : ProviderStatus(state: .notInstalled, message: p.hint)
         }
         return result
     }
 
-    // MARK: - Off-main fetch plumbing
-    //
-    // Every fetch blocks on a subprocess for tens of seconds, so none of it may
-    // touch the main actor. These hop to a utility queue and hop back with a
-    // plain value.
+    nonisolated static func isPresent(_ id: String) -> Bool {
+        switch id {
+        case "claude": return CLILocator.isInstalled("claude") || Keychain.exists(service: "Claude Code-credentials")
+        case "codex": return CLILocator.isInstalled("codex") || CodexAPI.credentials() != nil
+        case "cursor": return CLILocator.isInstalled("cursor-agent") || FileManager.default.fileExists(atPath: CursorAPI.editorState.path)
+        case "antigravity": return CLILocator.isInstalled("agy")
+        default: return false
+        }
+    }
 
-    private struct OtherResults: Sendable {
-        var detected: [String: ProviderStatus] = [:]
+    /// Detection settles "not installed" and "off"; for one that's there, it only fills in "checking" until its
+    /// first answer, and never covers up what a fetch already said.
+    private func applyDetection(_ detected: [String: ProviderStatus]) {
+        for (id, d) in detected {
+            switch d.state {
+            case .disabled, .notInstalled:
+                providers[id] = d
+            default:
+                switch providers[id]?.state {
+                case nil, .notInstalled, .disabled: providers[id] = d
+                default: break
+                }
+            }
+        }
+    }
+
+    // MARK: - Off-main plumbing
+
+    /// Every source blocks (a request, a keychain read, a CLI run), so none of it runs on the main actor.
+    nonisolated private static func run<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .utility).async { continuation.resume(returning: work()) }
+        }
+    }
+
+    // MARK: - Last known numbers, across restarts
+
+    private struct Cache: Codable {
+        var claude: ClaudeUsage?
         var antigravity: GeminiUsage?
         var codex: CodexUsage?
         var cursor: CursorUsage?
     }
 
-    nonisolated private static func run<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .utility).async {
-                continuation.resume(returning: work())
-            }
+    private static var cacheURL: URL { Settings.supportDirectory.appendingPathComponent("usage.json") }
+
+    private func loadCache() {
+        guard let data = try? Data(contentsOf: Self.cacheURL),
+              let c = try? JSONDecoder().decode(Cache.self, from: data) else { return }
+        if let x = c.claude { claude = x }
+        antigravity = c.antigravity
+        codex = c.codex
+        cursor = c.cursor
+        // Shown straight away, as last known, until each provider's first refresh lands.
+        for (id, has) in [("claude", c.claude?.session != nil || c.claude?.weekly != nil),
+                          ("antigravity", c.antigravity?.fiveHourPct != nil || c.antigravity?.weeklyPct != nil),
+                          ("codex", !(c.codex?.limits?.isEmpty ?? true)), ("cursor", !(c.cursor?.rows?.isEmpty ?? true))]
+        where has && Settings.shared.isEnabled(id) {
+            providers[id] = ProviderStatus(state: .loggedIn)
         }
+        expireResets()
     }
 
-    nonisolated private static func fetchClaudeOffMain(enabled: Bool) async -> ClaudeUsage? {
-        guard enabled else { return nil }
-        return await run {
-            guard Reachability.isOnline() else {
-                var offline = ClaudeUsage()
-                offline.error = "You're offline."
-                offline.errorType = "offline"
-                return offline
-            }
-            return UsageFetcher.fetchClaude()
-        }
-    }
-
-    nonisolated private static func fetchOthersOffMain(skipping skip: Set<String>) async -> OtherResults {
-        let detected = await run { detect() }
-        var results = OtherResults()
-        results.detected = detected
-
-        // Only actually drive whichever CLIs detection found installed — and
-        // aren't already known to be signed out — and do those in parallel with
-        // each other since none depends on the others.
-        @Sendable func shouldDrive(_ id: String) -> Bool {
-            detected[id]?.state == .installed && !skip.contains(id)
-        }
-        async let agy: GeminiUsage? = shouldDrive("antigravity")
-            ? await run { UsageFetcher.fetchAntigravity() } : nil
-        async let cdx: CodexUsage? = shouldDrive("codex")
-            ? await run { UsageFetcher.fetchCodex() } : nil
-        async let csr: CursorUsage? = shouldDrive("cursor")
-            ? await run { UsageFetcher.fetchCursor() } : nil
-
-        let (a, c, u) = await (agy, cdx, csr)
-        results.antigravity = a
-        results.codex = c
-        results.cursor = u
-        return results
-    }
-
-    // MARK: - Applying results
-
-    /// A fetch that came back as pure error (offline, CLI hiccup, timed out)
-    /// shouldn't blank real percentages that were showing a moment ago — keep
-    /// the last good reading on screen and just record the error alongside it.
-    /// Only a fetch that actually returned data replaces it wholesale.
-    private func applyClaude(_ data: ClaudeUsage?) {
-        guard let data else { return }
-
-        let isFailure = data.error != nil && data.session == nil
-            && data.weekly == nil && data.stats == nil
-        if isFailure {
-            claude.error = data.error
-            claude.errorType = data.errorType
-            // Claude's own status, refined from the `which`-based baseline:
-            // an auth-type error means the CLI is there but not signed in.
-            if data.errorType == "auth" {
-                providers["claude"] = ProviderStatus(state: .installed)
-                signedOut.insert("claude")
-            } else if providers["claude"]?.state == .installed, let err = data.error {
-                providers["claude"] = ProviderStatus(state: .error(err), message: err)
-            }
-            return
-        }
-
-        claude = data
-        signedOut.remove("claude")
-        if data.session != nil || data.weekly != nil {
-            providers["claude"] = ProviderStatus(state: .loggedIn, message: data.error)
-            HistoryStore.shared.record(session: data.session, weekly: data.weekly)
-        }
-    }
-
-    private func applyOthers(_ results: OtherResults) {
-        var status = providers.merging(results.detected) { _, new in new }
-
-        if let result = results.antigravity {
-            let hasCached = antigravity?.fiveHourPct != nil || antigravity?.weeklyPct != nil
-            status["antigravity"] = Self.resolve(
-                error: result.error, signedIn: result.signedIn, hasCachedData: hasCached)
-            noteAuth("antigravity", signedIn: result.signedIn)
-            if result.error == nil, result.signedIn != false {
-                var stored = result
-                stored.lastUpdated = Date()
-                antigravity = stored
-            } else if result.error == nil {
-                antigravity = result
-            }
-        }
-
-        if let result = results.codex {
-            let hasCached = !(codex?.limits?.isEmpty ?? true)
-            status["codex"] = Self.resolve(
-                error: result.error, signedIn: result.signedIn, hasCachedData: hasCached)
-            noteAuth("codex", signedIn: result.signedIn)
-            if result.error == nil, result.signedIn != false {
-                var stored = result
-                stored.lastUpdated = Date()
-                codex = stored
-            } else if result.error == nil {
-                codex = result
-            }
-        }
-
-        if let result = results.cursor {
-            let hasCached = !(cursor?.rows?.isEmpty ?? true)
-            status["cursor"] = Self.resolve(
-                error: result.error, signedIn: result.signedIn, hasCachedData: hasCached)
-            noteAuth("cursor", signedIn: result.signedIn)
-            if result.error == nil, result.signedIn != false {
-                var stored = result
-                stored.lastUpdated = Date()
-                cursor = stored
-            } else if result.error == nil {
-                cursor = result
-            }
-        }
-
-        providers = status
-    }
-
-    /// Records what a drive just learned about a provider's sign-in state, so
-    /// the background poll can stop relaunching a CLI that will only open
-    /// another dead-end OAuth tab. `nil` means the drive failed for some other
-    /// reason and proved nothing either way, so the existing flag stands.
-    private func noteAuth(_ id: String, signedIn: Bool?) {
-        switch signedIn {
-        case false: signedOut.insert(id)
-        case true: signedOut.remove(id)
-        case nil: break
-        }
-    }
-
-    /// The shared rule for turning a fetch result into a status.
-    ///
-    /// A transient failure shouldn't drop a tab back to an error screen when
-    /// real percentages are already cached — stay `.loggedIn` and carry the
-    /// error as a `message`, which the shells render as a stale banner over
-    /// otherwise-valid data.
-    nonisolated private static func resolve(error: String?, signedIn: Bool?, hasCachedData: Bool) -> ProviderStatus {
-        if let error {
-            return hasCachedData
-                ? ProviderStatus(state: .loggedIn, message: error)
-                : ProviderStatus(state: .error(error), message: error)
-        }
-        if signedIn == false { return ProviderStatus(state: .installed) }
-        return ProviderStatus(state: .loggedIn)
+    private func saveCache() {
+        let c = Cache(claude: claude, antigravity: antigravity, codex: codex, cursor: cursor)
+        guard let data = try? JSONEncoder().encode(c) else { return }
+        try? data.write(to: Self.cacheURL, options: .atomic)
     }
 
     // MARK: - Settings changes
 
-    /// Toggling a provider should take effect immediately rather than waiting
-    /// up to five minutes for the next poll.
+    /// Toggling a provider takes effect immediately rather than at the next poll.
     public func setProviderEnabled(_ id: String, _ enabled: Bool) async {
         Settings.shared.setEnabled(id, enabled)
         settingsRevision += 1
@@ -325,6 +327,7 @@ public final class UsageService: ObservableObject {
             case "claude": claude = .empty
             default: break
             }
+            saveCache()
         }
     }
 
@@ -334,8 +337,7 @@ public final class UsageService: ObservableObject {
         providers[id] ?? ProviderStatus(state: .checking)
     }
 
-    /// The one figure that best represents "quota right now" for a provider,
-    /// or `nil` when there isn't one to show yet.
+    /// The one figure that best represents "quota right now" for a provider, or `nil` when there isn't one yet.
     public func primaryPct(_ id: String) -> Int? {
         switch id {
         case "claude": return claude.session ?? claude.weekly
@@ -354,5 +356,58 @@ public final class UsageService: ObservableObject {
         case "cursor": return cursor?.lastUpdated
         default: return nil
         }
+    }
+
+    /// Where a provider's numbers came from (`UsageSource`), for showing or debugging.
+    public func source(_ id: String) -> String? {
+        switch id {
+        case "claude": return claude.source
+        case "antigravity": return antigravity?.source
+        case "codex": return codex?.source
+        case "cursor": return cursor?.source
+        default: return nil
+        }
+    }
+}
+
+extension UsageFetcher.Fetched {
+    /// The source of the numbers, when there are some.
+    var source: String? {
+        guard case .data(let u) = self else { return nil }
+        switch u {
+        case let x as ClaudeUsage: return x.source
+        case let x as CodexUsage: return x.source
+        case let x as CursorUsage: return x.source
+        case let x as GeminiUsage: return x.source
+        default: return nil
+        }
+    }
+}
+
+/// Windows whose reset time has passed, started over. Pure, so the rule is tested on its own.
+enum UsageExpiry {
+    static func claude(_ u: ClaudeUsage, now: Date) -> ClaudeUsage {
+        var c = u
+        if let r = c.sessionResetsAt, r <= now { c.session = 0; c.sessionResetsAt = nil; c.sessionReset = nil }
+        if let r = c.weeklyResetsAt, r <= now { c.weekly = 0; c.weeklyResetsAt = nil; c.weeklyReset = nil }
+        return c
+    }
+
+    static func codex(_ u: CodexUsage, now: Date) -> CodexUsage {
+        var x = u
+        x.limits = u.limits?.map { l in
+            guard let r = l.resetsAt, r <= now else { return l }
+            return CodexLimit(name: l.name, pctUsed: 0)
+        }
+        return x
+    }
+
+    static func cursor(_ u: CursorUsage, now: Date) -> CursorUsage {
+        guard let r = u.resetsAt, r <= now else { return u }
+        var x = u
+        x.rows = u.rows?.map { CursorUsageRow(name: $0.name, pctUsed: 0) }
+        x.resetsAt = nil
+        x.reset = nil
+        return x
     }
 }

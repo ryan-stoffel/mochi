@@ -62,6 +62,15 @@ public enum ProviderParsers {
         let text = lines.joined(separator: "\n")
 
         guard let sectionMatch = agySectionRe.firstMatch(text), let section = sectionMatch[1] else {
+            // agy's first-run setup (colour scheme, then its Terms of Service with a data-sharing box) stands
+            // between it and /usage until you go through it yourself in a terminal. It's yours to answer, so the
+            // drive never presses through it; this just says why there are no numbers.
+            let flat = text.lowercased()
+            if ["welcome to antigravity cli", "choose your color scheme", "terms of service & data use"].contains(where: flat.contains) {
+                var u = GeminiUsage(signedIn: true)
+                u.needsSetup = true
+                return u
+            }
             // "not signed in" also flashes during the normal startup handshake
             // (the banner shows it, then it silently signs in from a cached
             // token), so only trust it once we know the quota panel never

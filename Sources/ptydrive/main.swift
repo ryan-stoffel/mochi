@@ -30,9 +30,12 @@ let provider = args[1]
 let binaryPath = args[2]
 let command: String? = args.count > 3 ? args[3] : nil
 
-guard let spec = PTYSession.spec(for: provider, command: command) else {
+guard var spec = PTYSession.spec(for: provider, command: command) else {
     fail("unknown provider '\(provider)'")
 }
+// agy's first-run setup ends on its Terms of Service, with a data-sharing box. Pressing Enter through it would
+// answer that for you, so never nudge: an unfinished setup just means no numbers until you run agy yourself.
+if provider == "antigravity" || provider == "agy" { spec.wizardNudgeTimeout = 0 }
 
 guard FileManager.default.isExecutableFile(atPath: binaryPath) else {
     fail("not executable: \(binaryPath)")
@@ -47,9 +50,10 @@ env["TERM"] = "dumb"
 env["FORCE_COLOR"] = "0"
 env["CLAUDE_CODE_DISABLE_ANIMATIONS"] = "true"
 env["PATH"] = CLILocator.augmentedPATH(env["PATH"])
-// Marks this run as a usage check, so the minis' hook script ignores the
-// session it opens — it's this app reading a screen, not anyone working.
+// Marks this run as a usage check, so Mochi's hook scripts ignore the session it opens: it's Mochi reading a
+// screen, not anyone working.
 env["AIUSAGE_PROBE"] = "1"
+env["MOCHI_USAGE_CHECK"] = "1"
 
 // A SIGTERM from the parent (its own watchdog firing) should still print
 // whatever was captured rather than dying silently — matching the Python
