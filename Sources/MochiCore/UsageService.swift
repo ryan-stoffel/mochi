@@ -121,7 +121,7 @@ public final class UsageService: ObservableObject {
                 HistoryStore.shared.record(provider: id, session: u.primaryPct, weekly: nil)
             }
         case "antigravity":
-            guard let r = await Self.run({ UsageFetcher.antigravity(allowCLI: allowCLI) }) else { return }
+            let r = await Self.run { UsageFetcher.antigravity(allowCLI: allowCLI) }
             noteCLI(id, allowCLI, source: r.source)
             apply(id, r, hasData: antigravity?.fiveHourPct != nil || antigravity?.weeklyPct != nil) { u in
                 antigravity = u
@@ -224,6 +224,7 @@ public final class UsageService: ObservableObject {
         if c != claude { claude = c }
         if let x = codex.map({ UsageExpiry.codex($0, now: now) }), x != codex { codex = x }
         if let x = cursor.map({ UsageExpiry.cursor($0, now: now) }), x != cursor { cursor = x }
+        if let x = antigravity.map({ UsageExpiry.antigravity($0, now: now) }), x != antigravity { antigravity = x }
     }
 
     // MARK: - Detection
@@ -410,5 +411,12 @@ enum UsageExpiry {
         x.resetsAt = nil
         x.reset = nil
         return x
+    }
+
+    static func antigravity(_ u: GeminiUsage, now: Date) -> GeminiUsage {
+        var g = u
+        if let r = g.fiveHourResetsAt, r <= now { g.fiveHourPct = 0; g.fiveHourResetsAt = nil; g.fiveHourReset = nil }
+        if let r = g.weeklyResetsAt, r <= now { g.weeklyPct = 0; g.weeklyResetsAt = nil; g.weeklyReset = nil }
+        return g
     }
 }

@@ -168,8 +168,11 @@ final class UsageMenu {
             }
         case "cursor":
             // Every row shares the one reset date Cursor prints once, unlike Codex where each limit has its own.
-            let c = usage.cursor
-            return (c?.rows ?? []).map { gauge($0.name, $0.pctUsed, reset: c?.reset) }
+            // The plan goes under the first row, so a Free plan with nothing used reads as working rather than empty.
+            let c = usage.cursor, rows = c?.rows ?? []
+            let idle = rows.allSatisfy { $0.pctUsed == 0 } ? "none used yet" : nil
+            let note = [c?.plan.map { "\($0.lowercased()) plan" }, idle].compactMap { $0 }.joined(separator: " · ")
+            return rows.enumerated().map { i, r in gauge(r.name, r.pctUsed, reset: c?.reset, sub: i == 0 && !note.isEmpty ? note : nil) }
         default:
             return []
         }

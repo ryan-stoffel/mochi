@@ -5,7 +5,8 @@ import Foundation
 // Every source here reads the sign-in the provider's CLI or app already keeps on this Mac and asks the provider's
 // own usage endpoint, the same one its app shows. Read-only: a token is used as found and never refreshed here.
 // Refreshing would rotate it out from under the CLI and sign you out of it; an expired token just means trying the
-// next source until the CLI refreshes its own next time it runs. Tokens never leave the request they're used in.
+// next source until the CLI refreshes its own next time it runs (agy is run to do it, since that costs nothing).
+// Tokens never leave the request they're used in.
 
 /// What one source made of a provider.
 public enum SourceResult<T> {
@@ -70,7 +71,7 @@ enum HTTP {
     static func send(_ request: URLRequest) -> Result<Response, SourceError> {
         var req = request
         req.timeoutInterval = 10
-        req.setValue("Mochi", forHTTPHeaderField: "User-Agent")
+        if req.value(forHTTPHeaderField: "User-Agent") == nil { req.setValue("Mochi", forHTTPHeaderField: "User-Agent") }
         var result: Result<Response, SourceError> = .failure(.other("No response."))
         let done = DispatchSemaphore(value: 0)
         URLSession.shared.dataTask(with: req) { data, response, error in
@@ -402,8 +403,78 @@ enum CursorAPI {
 
 // MARK: - Antigravity
 
-/// agy keeps its Google sign-in in the keychain (service "gemini", account "antigravity"), encrypted, so its quota
-/// can only be read from agy's own /usage screen. Its presence is still what says whether you're signed in.
-enum AntigravityAuth {
+/// Cloud Code's quota summary, the one agy's /usage screen draws, with the Google sign-in agy keeps in the keychain.
+enum AntigravityAPI {
     static var signedIn: Bool { Keychain.exists(service: "gemini", account: "antigravity") }
+
+    /// agy's access token and when it expires. go-keyring saves it as "go-keyring-base64:" and base64 JSON.
+    static func token() -> (access: String, expiry: Date?)? {
+        guard var raw = Keychain.password(service: "gemini", account: "antigravity") else { return nil }
+        let prefix = "go-keyring-base64:"
+        var data = Data(raw.utf8)
+        if raw.hasPrefix(prefix) {
+            raw.removeFirst(prefix.count)
+            guard let d = Data(base64Encoded: raw + String(repeating: "=", count: (4 - raw.count % 4) % 4)) else { return nil }
+            data = d
+        }
+        guard let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let t = j["token"] as? [String: Any],
+              let access = t["access_token"] as? String, !access.isEmpty else { return nil }
+        return (access, UsageDates.parse(t["expiry"]))
+    }
+
+    static func fetch(now: Date = Date()) -> SourceResult<GeminiUsage> {
+        guard let agy = CLILocator.find("agy"), var t = token() else { return .signedOut }
+        if let exp = t.expiry, exp < now.addingTimeInterval(60) {
+            // agy renews its own sign-in whenever it runs, and `agy models` runs without a prompt or any quota.
+            _ = Shell.run(agy, ["models"], timeout: 30)
+            guard let fresh = token(), fresh.expiry.map({ $0 > now }) ?? true else {
+                return .failed("Sign-in expired; run agy once to renew it.")
+            }
+            t = fresh
+        }
+        var req = URLRequest(url: URL(string: "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary")!)
+        req.httpMethod = "POST"
+        req.httpBody = Data("{}".utf8)
+        req.setValue("Bearer " + t.access, forHTTPHeaderField: "Authorization")
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // The endpoint only answers agy itself (403 otherwise).
+        let version = Shell.run(agy, ["--version"])?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "1"
+        req.setValue("antigravity/\(version) darwin/\(arm64 ? "arm64" : "x86_64")", forHTTPHeaderField: "User-Agent")
+        return HTTP.result(HTTP.send(req)) { parse($0, now: now) }
+    }
+
+    private static var arm64: Bool {
+        #if arch(arm64)
+        true
+        #else
+        false
+        #endif
+    }
+
+    /// Every model group has a weekly and a 5-hour window; the dropdown shows the most used group in each. An unused
+    /// window's reset is just "5 hours from now", so it's left out, as agy's screen does.
+    static func parse(_ data: Data, now: Date = Date()) -> GeminiUsage? {
+        guard let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let groups = j["groups"] as? [[String: Any]] else { return nil }
+        let buckets = groups.flatMap { $0["buckets"] as? [[String: Any]] ?? [] }.filter { $0["disabled"] as? Bool != true }
+        func most(_ window: String) -> (pct: Int, reset: Date?)? {
+            buckets.filter { $0["window"] as? String == window }
+                .compactMap { b -> (pct: Int, reset: Date?)? in
+                    guard let left = (b["remainingFraction"] as? NSNumber)?.doubleValue else { return nil }
+                    let pct = Int(((1 - left) * 100).rounded())
+                    return (pct, pct > 0 ? UsageDates.parse(b["resetTime"]) : nil)
+                }
+                .max { $0.pct < $1.pct }
+        }
+        let week = most("weekly"), five = most("5h")
+        guard week != nil || five != nil else { return nil }
+        var u = GeminiUsage(signedIn: true, weeklyPct: week?.pct, fiveHourPct: five?.pct,
+                            weeklyReset: week?.reset.map { UsageDates.resetText($0, now: now) },
+                            fiveHourReset: five?.reset.map { UsageDates.resetText($0, now: now) }, lastUpdated: now)
+        u.weeklyResetsAt = week?.reset
+        u.fiveHourResetsAt = five?.reset
+        u.source = UsageSource.api
+        return u
+    }
 }

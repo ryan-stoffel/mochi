@@ -100,9 +100,9 @@ Mochi reads each plan straight from the provider, with the sign-in its CLI alrea
 | Claude | Anthropic's usage API (Claude Code's sign-in, from the keychain) | Claude Code's status line, after every message, once connected | the `/usage` screen of `claude` |
 | Codex | ChatGPT's usage API (`~/.codex/auth.json`) | Codex's own session logs | the `/status` screen of `codex` |
 | Cursor | Cursor's usage API (cursor-agent's sign-in, or the editor's) | | the `/usage` screen of `cursor-agent` |
-| Antigravity | the `/usage` screen of `agy` | | |
+| Antigravity | Google Cloud Code's quota API (`agy`'s sign-in, from the keychain) | | the `/usage` screen of `agy` |
 
-Every provider refreshes on its own, so a slow one never holds up the rest: the APIs every 2 minutes (Claude's every 5, and it backs off when Anthropic says to slow down), a CLI screen at most every 15. The last numbers you saw show straight away at launch and stay up, marked stale, if a check fails. Mochi never refreshes or stores a sign-in itself: an expired one waits for its CLI to renew it the next time you use it. Reading a CLI's screen is a local command; it doesn't send a prompt or use any of your plan. Antigravity needs `agy`'s first-run setup finished once in a terminal before its usage can be read.
+Every provider refreshes on its own, so a slow one never holds up the rest: the APIs every 2 minutes (Claude's every 5, and it backs off when Anthropic says to slow down), a CLI screen at most every 15. The last numbers you saw show straight away at launch and stay up, marked stale, if a check fails. Mochi never refreshes or stores a sign-in itself: an expired one waits for its CLI to renew it the next time you use it (for `agy`, Mochi runs `agy models`, which renews it and uses none of your plan). Reading a CLI's screen is a local command; it doesn't send a prompt or use any of your plan. Antigravity needs `agy`'s first-run setup finished once in a terminal before its usage can be read.
 
 It also cheers you on every 20–35 minutes, throws confetti on each hour you've worked, and gets heart eyes when you hover over it.
 

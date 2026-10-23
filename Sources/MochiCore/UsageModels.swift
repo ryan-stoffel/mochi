@@ -65,6 +65,9 @@ public struct GeminiUsage: Codable, Equatable, Sendable {
     public var source: String?
     /// agy is signed in but has never finished its first-run setup, so it can't show `/usage` yet.
     public var needsSetup: Bool?
+    /// When each window starts over, when the source says (the API does, agy's screen doesn't).
+    public var weeklyResetsAt: Date?
+    public var fiveHourResetsAt: Date?
 
     public init(signedIn: Bool? = nil, weeklyPct: Int? = nil, fiveHourPct: Int? = nil,
                 weeklyReset: String? = nil, fiveHourReset: String? = nil,

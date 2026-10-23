@@ -869,6 +869,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
             "connected": agents.installed[p] == true, "canConnect": agents.canInstall(p),
             "listening": agents.listening, "port": Int(Agents.port),
             "usage": usageWindows(p), "usageStatus": usageNote(p), "updated": updated,
+            "plan": (p == "cursor" ? usage.cursor?.plan?.lowercased() : nil) ?? "",
             "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
             "sessions": !isOn("showSessions") ? [] : agents.store.sessions(of: p).prefix(8).map {
                 ["id": $0.id, "project": $0.project.isEmpty ? (Provider.byID(p)?.name ?? p) : $0.project, "line": $0.describe(now),

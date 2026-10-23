@@ -188,19 +188,19 @@ public enum UsageFetcher {
         return .data(out)
     }
 
-    /// Antigravity: agy's /usage screen is the only source (its sign-in is encrypted), so it's only read when
-    /// `allowCLI`, and never while agy is signed out (that would open a sign-in tab). Nil: nothing new this time.
-    public static func antigravity(allowCLI: Bool) -> Fetched<GeminiUsage>? {
-        guard AntigravityAuth.signedIn else { return .signedOut(nil) }
-        guard allowCLI else { return nil }
-        let u = fetchAntigravity()
-        if u.needsSetup == true { return .signedOut("Finish agy's first-run setup: run agy once in a terminal.") }
-        if u.signedIn == false { return .signedOut(nil) }
-        if let error = u.error { return .failed(error) }
-        var out = u
-        out.source = UsageSource.cli
-        out.lastUpdated = Date()
-        return .data(out)
+    /// Antigravity: Cloud Code's quota summary, then agy's /usage screen, which draws the same numbers. Never the
+    /// screen while agy is signed out: that would open a sign-in tab.
+    public static func antigravity(allowCLI: Bool) -> Fetched<GeminiUsage> {
+        chain(api: { AntigravityAPI.fetch() }, cli: {
+            let u = fetchAntigravity()
+            if u.needsSetup == true { return .signedOut("Finish agy's first-run setup: run agy once in a terminal.") }
+            if u.signedIn == false { return .signedOut(nil) }
+            if let error = u.error { return .failed(error) }
+            var out = u
+            out.source = UsageSource.cli
+            out.lastUpdated = Date()
+            return .data(out)
+        }, allowCLI: allowCLI)
     }
 
     private static func fallback<T>(_ r: SourceResult<T>) -> Fetched<T> {

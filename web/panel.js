@@ -34,7 +34,7 @@
   // ---------- tabs ----------
   const VIEWS = {
     usage() {
-      const out = [h('h2', {}, `your ${name()} plan`, h('span', { class: 'end' }, S.updated || '',
+      const out = [h('h2', {}, `your ${name()} ${S.plan ? S.plan + ' ' : ''}plan`, h('span', { class: 'end' }, S.updated || '',
         say('button', { class: 'ghost small-ghost', title: 'check now', onclick: () => act('refreshUsage') }, ':refresh:')))];
       if ((S.usage || []).length) {
         for (const w of S.usage) {

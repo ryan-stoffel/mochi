@@ -95,6 +95,19 @@ final class UsageSourceTests: XCTestCase {
 
     // MARK: - Antigravity
 
+    /// The real answer's shape, with a second group and some use added: each window shows its most used group.
+    func testAntigravityAPI() throws {
+        let u = try XCTUnwrap(AntigravityAPI.parse(try fixture("antigravity-quota-summary.json"), now: now))
+        XCTAssertEqual(u.fiveHourPct, 38)
+        XCTAssertEqual(u.weeklyPct, 12)
+        XCTAssertEqual(u.fiveHourResetsAt, UsageDates.parse("2026-10-23T19:32:09Z"))
+        XCTAssertEqual(u.weeklyResetsAt, UsageDates.parse("2026-10-30T14:32:09Z"))
+        XCTAssertEqual(u.source, UsageSource.api)
+        let later = UsageExpiry.antigravity(u, now: try XCTUnwrap(u.fiveHourResetsAt))
+        XCTAssertEqual(later.fiveHourPct, 0)
+        XCTAssertEqual(later.weeklyPct, 12)
+    }
+
     /// agy's first-run setup, captured from a real run: no numbers, and a clear reason rather than "signed out".
     func testAntigravitySetupScreenIsRecognised() throws {
         let raw = String(decoding: try fixture("antigravity-setup.ansi"), as: UTF8.self)
