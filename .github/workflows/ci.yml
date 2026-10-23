@@ -1,0 +1,48 @@
+name: CI
+
+# Every push to main and every PR: the tests, then a real app bundle, so a broken Info.plist or an unsigned helper
+# fails here rather than in a release.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Test
+        run: swift test
+
+      - name: Check the pages parse
+        run: for f in web/*.js scripts/*.js; do node --check "$f"; done
+
+      - name: Check the menu bar sprites match the pets
+        run: node scripts/tray-sprites.js | diff - Sources/Mochi/Tray/TraySprites.swift
+
+      - name: Build app bundle
+        run: ./build.sh
+
+      - name: Validate bundle
+        run: |
+          set -euo pipefail
+          APP="build/Mochi.app"
+          plutil -lint "$APP/Contents/Info.plist"
+          test -x "$APP/Contents/MacOS/Mochi"
+          # without ptydrive beside the app, the last-resort usage source has nothing to run
+          test -x "$APP/Contents/MacOS/ptydrive"
+          test -f "$APP/Contents/Resources/web/index.html"
+          ICON=$(plutil -extract CFBundleIconFile raw "$APP/Contents/Info.plist")
+          test -f "$APP/Contents/Resources/$ICON.icns"
+          codesign --verify --deep --strict "$APP"
+          echo "bundle OK"

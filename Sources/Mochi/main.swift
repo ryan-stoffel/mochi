@@ -199,6 +199,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
     var followClaude: Bool { defaults.object(forKey: "followClaude") as? Bool ?? true }
     var narrateClaude: Bool { defaults.object(forKey: "narrateClaude") as? Bool ?? true }
     var checkUsage: Bool { defaults.object(forKey: "checkUsage") as? Bool ?? true }   // ask Claude Code for usage every 5 minutes
+    lazy var shell = UsageShell()
     lazy var claude = ClaudeCode(dataDir: dataDir)
     lazy var claudeLinked = claude.connected
     var lastClaude = ""
@@ -241,6 +242,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
             defaults.set(true, forKey: "loginConfigured")
             setOpenAtLogin(true)
         }
+        shell.start()
         Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in self?.frame() }
         Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in self?.tick() }
     }

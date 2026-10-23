@@ -2,21 +2,30 @@
 # Build Mochi.app.   ./build.sh          → build/Mochi.app (universal: Apple Silicon + Intel)
 #                    ./build.sh install  → also copy to ~/Applications and (re)launch it
 #                    ./build.sh release  → also zip it to build/Mochi.zip for a GitHub release
+#                    ./build.sh fast     → this Mac's architecture only, for a quicker loop
 set -euo pipefail
 cd "${0:A:h}"
 
 APP=build/Mochi.app
+if [[ "${1:-}" == "fast" ]]; then
+  swift build -c release
+  BIN=$(swift build -c release --show-bin-path)
+else
+  swift build -c release --arch arm64 --arch x86_64
+  BIN=$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)
+fi
+
 rm -rf build
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-for arch in arm64 x86_64; do
-  swiftc -swift-version 5 -O -target $arch-apple-macos13.0 Sources/*.swift \
-    -o build/Mochi-$arch -framework AppKit -framework WebKit -framework ServiceManagement -framework Network -framework JavaScriptCore
-done
-lipo -create build/Mochi-arm64 build/Mochi-x86_64 -output "$APP/Contents/MacOS/Mochi"
-rm build/Mochi-arm64 build/Mochi-x86_64
+cp "$BIN/Mochi" "$APP/Contents/MacOS/Mochi"
+# ptydrive sits beside the app's binary; UsageFetcher looks for it there.
+cp "$BIN/ptydrive" "$APP/Contents/MacOS/ptydrive"
 cp Info.plist "$APP/Contents/"
 rsync -a --exclude preview.html web/ "$APP/Contents/Resources/web/"
-[[ -f assets/AppIcon.icns ]] && cp assets/AppIcon.icns "$APP/Contents/Resources/"
+cp assets/AppIcon.icns "$APP/Contents/Resources/"
+plutil -lint "$APP/Contents/Info.plist" >/dev/null
+# Sign the nested helper first: Gatekeeper rejects a bundle whose inner executable isn't signed itself.
+codesign --force --sign - "$APP/Contents/MacOS/ptydrive"
 codesign --force --deep --sign - "$APP" >/dev/null
 echo "built $APP"
 

@@ -17,6 +17,7 @@
     z: '#FFD54A', Z: '#F2A93B', O: '#FFF6C8',                                              // gold, glow
     x: '#FF4F6E', i: '#FF5C7C', h: '#7A5233', H: '#54381F', F: '#F2C27A', f: '#D99A4E',    // misc
     E: '#D3C7A3', Q: '#A99B76', J: '#1F4D3E', I: '#C8E86B',                                // tv
+    9: '#1D2150', 1: '#4A8CF7', 2: '#6C7EEB', 3: '#957ADB', 4: '#C474B0',                // Codex's visor, Gemini's gradient
   };
 
   const sp = (rows) => ({ rows, w: rows[0].length, h: rows.length });
@@ -51,6 +52,73 @@
     // turning sideways, mid-spin
     thin: { s: bodySprite(8, 10), dx: 3, dy: 0 },
     edge: { s: bodySprite(4, 10), dx: 5, dy: 0 },
+  };
+
+  // Other agents' minis: the same rig (poses, props, arms) on a different body.
+  //   x, y: where the sprite starts, from the body's top-left; eye: moves the face down;
+  //   arms: [left x, width, shoulder row]; legs: columns, or null to hover.
+  const SPECIES = {
+    // Codex's pet: a cloud head with a visor face, and >_ on a chest plate.
+    codex: { x: -1, y: -6, eye: -4, arms: [3, 8, 6], legs: [4, 5, 8, 9], s: sp([
+      '...llll..llll...',
+      '..llbbbllbbbbs..',
+      '.lbbbbbbbbbbbbs.',
+      'lbbb99999999bbbs',
+      'lbb9999999999bbs',
+      'bbb9999999999bbs',
+      'bbb9999999999bbs',
+      'bbb9999999999bbs',
+      'bbbb99999999bbbs',
+      '.sbbbbbbbbbbbbs.',
+      '...ssssssssss...',
+      '....lbbbbbbl....',
+      '....b9W9999s....',
+      '....b99W999s....',
+      '....b9W9WW9s....',
+      '....ssssssss....',
+    ]) },
+    // Gemini: an orb in its blue-to-rose gradient with the Gemini sparkle hovering over it. Floats.
+    gemini: { x: 0, y: -9, eye: 0, arms: [0, 14, 5], legs: null, s: sp([
+      '......11......',
+      '......11......',
+      '.....1ww1.....',
+      '...11wwww11...',
+      '.....1ww1.....',
+      '......11......',
+      '......11......',
+      '..............',
+      '....111111....',
+      '..1w11111111..',
+      '.1w1111111111.',
+      '.222222222222.',
+      '22222222222222',
+      '22222222222222',
+      '33333333333333',
+      '33333333333333',
+      '.333333333333.',
+      '.444444444444.',
+      '...44444444...',
+    ]) },
+    // Cursor's logo: a hexagonal cube with a white arrow for a face.
+    cursor: { x: -1, y: -5, eye: -2, arms: [-1, 16, 3], legs: [2, 3, 10, 11], s: sp([
+      '.......bb.......',
+      '.....bbbbbb.....',
+      '...bbbbbbbbbb...',
+      '.bbbbbbbbbbbbbb.',
+      'llllllllllllllll',
+      'dllllllllllllllq',
+      'ddllllllllllllqs',
+      'dddlllllllllllqs',
+      'ddddlllllllllqss',
+      'dddddlllllllqsss',
+      'ddddddllllllqsss',
+      'dddddddllllqssss',
+      'ddddddddllqsssss',
+      '.ddddddddlqssss.',
+      '...ddddddssss...',
+      '.....ddddss.....',
+      '.......dd.......',
+    ]) },
   };
 
   // eyes: [sprite rows, x offset from body center, y offset from body top]; right eye mirrors the left
@@ -93,12 +161,12 @@
     waterTilt: { s: sp(['......VVV.', '.....V...V', '...BBBBBBV', 'BBBBBBBBB.', '...BBBBBB.', '...VVVVVV.']), grab: [9, 2] },
     pan: { s: sp(['....K.....K', 'GGGGKKKKKKK', '.....KKKKK.']), grab: [0, 1] },
     magnifier: { s: sp(['.ggg.', 'gAAwg', 'gAAAg', 'gAAAg', '.ggg.', 'h....', 'h....']), grab: [0, 6] },
-    // a cog, held up while its panel is open
-    gear: { s: sp(['...GGG...', '.GGGqGGG.', '.GqqqqqG.', 'GGqqGqqGG', 'GqqG.GqqG', 'GGqqGqqGG', '.GqqqqqG.', '.GGGqGGG.', '...GGG...']), grab: [0, 7] },
     popcorn: { s: sp(['.OwOzO.', 'OzOwOwO', 'RwRwRwR', 'RwRwRwR', '.RwRwR.', '.RwRwR.']), grab: [6, 3] },
     duck: { s: sp(['..zz...', '.zezz..', 'ZZzzz..', '..zzzzz', '.zzzzzz', '..zzzz.']), grab: [6, 4] },
     // Claude Code's work: a checklist (tests, the plan) and a parcel (a commit going out)
     clip: { s: sp(['..gg..', 'nPggPn', 'nPPPPn', 'nPMMPn', 'nPPPPn', 'nPMMPn', 'nPPPPn', 'nnnnnn']), grab: [5, 4] },
+    // a cog, held up while its panel is open
+    gear: { s: sp(['...GGG...', '.GGGqGGG.', '.GqqqqqG.', 'GGqqGqqGG', 'GqqG.GqqG', 'GGqqGqqGG', '.GqqqqqG.', '.GGGqGGG.', '...GGG...']), grab: [0, 7] },
     box: { s: sp(['ffffffff', 'fFFzzFFf', 'fFFzzFFf', 'fFFFFFFf', 'fFFFFFFf', 'ffffffff']), grab: [7, 3] },
   };
   const LAPTOP = sp(['...KKKKKKK', '..KkkkkkkK', '..KkkkkkK.', '.KkkkkkkK.', '.KKKKKKKK.', 'gggggggggg', 'KKKKKKKKKK']);
@@ -124,6 +192,7 @@
   const BATTERY = sp(['GGGGGGG.', 'G.....GG', 'G.....GG', 'GGGGGGG.']);
   const BOLT = sp(['..z', '.z.', 'zzz', '.z.', 'z..']);
   const ALERT = sp(['xx', 'xx', 'xx', '..', 'xx']);
+  const CHECK = sp(['.....L', '....LL', 'L..LL.', 'LLLL..', '.LL...']);
   // a tiny helper Mochi (Claude's sub-agents)
   const MINI = sp(['.lll.', 'bebeb', 'bbbbs', '.s.s.']);
 
@@ -278,6 +347,7 @@
     jump(st, f, pf) { if (pf < 9) { hop(st, pf); st.oy *= 1.6; st.oy = Math.round(st.oy); } },
     cheer(st, f) { hop(st, f % 9); const a = (f >> 1) % 2; st.armL = a ? 'up' : 'out'; st.armR = a ? 'out' : 'up'; },
     party(st, f) { hop(st, f % 9); const a = (f >> 1) % 2; st.armL = st.armR = a ? 'up' : 'out'; },
+    tinker(st, f) { st.bob = f % 30 >= 15 ? 1 : 0; st.heldRDy = f % 16 < 8 ? 0 : -1; },
     wave(st, f) { st.armR = (f >> 1) % 2 ? 'up' : 'out'; st.bob = f % 30 >= 15 ? 1 : 0; },
     walk(st, f) {
       const step = (f >> 1) % 4;
@@ -340,7 +410,6 @@
       st.heldRDy = c === 0 || c === 1 ? -1 : 0;
       st.sizzle = c >= 12;
     },
-    tinker(st, f) { st.bob = f % 30 >= 15 ? 1 : 0; st.heldRDy = f % 16 < 8 ? 0 : -1; },
     tv(st, f) { st.bob = f % 30 >= 15 ? 1 : 0; st.tvFace = f % 50 > 46 ? 'blink' : f % 120 > 100 ? 'sad' : 'smile'; },
     stroll(st, f, pf, v) {
       const step = (f >> 1) % 4;
@@ -419,6 +488,9 @@
     constructor(el, opts = {}) {
       this.el = el;
       this.scale = opts.scale || 6;
+      this.pal = opts.palette ? Object.assign({}, PAL, opts.palette) : PAL;
+      this.particles = opts.particles !== false;
+      this.species = SPECIES[opts.species] || null;
       el.classList.add('critter');
       el.innerHTML = '';
       this.canvas = document.createElement('canvas');
@@ -496,7 +568,7 @@
       return [r.left + (BX - wide) * k, r.top + (BY - 6) * k, (BW + wide * 2) * k, (BH + 9) * k];
     }
 
-    burst(kind, n = 1) { for (let i = 0; i < n; i++) this.parts.push(this._particle(kind)); }
+    burst(kind, n = 1) { if (!this.particles) return; for (let i = 0; i < n; i++) this.parts.push(this._particle(kind)); }
     _particle(kind) {
       const R = (a, b) => a + Math.random() * (b - a);
       const P = { kind, age: 0, life: FX[kind].life, x: 0, y: 0, vx: 0, vy: 0, g: 0, spr: 0 };
@@ -518,7 +590,7 @@
 
     // ---------- drawing ----------
     _px(x, y, c) {
-      const col = PAL[c] || c;
+      const col = this.pal[c] || c;
       if (!col || x < 0 || y < 0 || x >= CW || y >= CH) return;
       this.b.fillStyle = col;
       this.b.fillRect(x | 0, y | 0, 1, 1);
@@ -574,12 +646,18 @@
       const b = this.b;
       b.clearRect(0, 0, CW, CH);
       const ox = st.ox, oy = st.oy;
+      const S = this.species;
+      // A species keeps its one shape and only takes a squash's drop; a floater hovers 2px up.
       const body = BODIES[st.body] || BODIES.base;
-      const bx = BX + ox + body.dx, top = BY + oy + body.dy + st.bob;
-      const bw = body.s.w, bh = body.s.h;
+      const bx = BX + ox + (S ? 0 : body.dx), top = BY + oy + body.dy + st.bob - (S && !S.legs ? 2 : 0);
+      const bw = S ? BW : body.s.w;
+      const head = S ? top + S.y : top;   // highest row of the sprite, for things over its head
+      const face = S ? top + S.eye : top;
       const cx = bx + bw / 2;
       const ex = Math.max(-1, Math.min(1, st.lx | 0)), ey = Math.max(-1, Math.min(1, st.ly | 0));
-      const shoulder = top + 5;
+      // arms and held things attach to the torso, which on some species is narrower than the head
+      const abx = S ? bx + S.arms[0] : bx, abw = S ? S.arms[1] : bw;
+      const shoulder = S ? top + S.arms[2] : top + 5;
 
       // ground: plant
       if (P.ground === 'plant') {
@@ -587,11 +665,11 @@
         if (st.grow) this._px(4, 24, 'L');
       }
       // shadow
-      const sw = Math.round((oy < -3 ? 8 : 12) * st.shadow);
+      const sw = Math.round((oy < -3 || (S && !S.legs) ? 8 : 12) * st.shadow);
       for (let i = 0; i < sw; i++) this._px(BX + ox + 1 + (12 - sw) / 2 + i, BY + BH + 2, 'rgba(60,30,20,0.16)');
       // legs
-      LEGS.forEach((lx0, i) => {
-        const lx = bw < BW ? Math.round(body.dx + (lx0 * (bw - 1)) / (BW - 1)) : lx0;   // tucked in under a narrow body
+      (S ? S.legs || [] : LEGS).forEach((lx0, i) => {
+        const lx = !S && bw < BW ? Math.round(body.dx + (lx0 * (bw - 1)) / (BW - 1)) : lx0;   // tucked in under a narrow body
         const x = BX + ox + lx, y0 = BY + oy + BH - 1 - st.legLift[i];
         const shoes = P.legs === 'sneakers';
         this._px(x, y0, 'b');
@@ -599,14 +677,14 @@
         this._px(x, y0 + 2, shoes ? 'w' : 's');
       });
       // body
-      this._spr(body.s, bx, top);
+      this._spr(S ? S.s : body.s, bx + (S ? S.x : 0), head);
       const costume = P.acc.includes('tv');
       if (!costume && st.eyes !== 'none') {   // 'none': we're looking at its back
         if (P.blush) { this._px(Math.round(cx - 6), top + 5, 'p'); this._px(Math.round(cx - 5), top + 5, 'p'); this._px(Math.round(cx + 4), top + 5, 'p'); this._px(Math.round(cx + 5), top + 5, 'p'); }
         const eyeCx = Math.round(cx);
-        this._glyph(EYES[st.eyes] || EYES.open, eyeCx, top, ex, ey);
-        if (P.brows && BROWS[P.brows]) this._glyph(BROWS[P.brows], eyeCx, top, ex, Math.min(ey, 0));
-        if (st.mouth && MOUTHS[st.mouth]) this._glyph(MOUTHS[st.mouth], eyeCx, top, ex, ey, false);
+        this._glyph(EYES[st.eyes] || EYES.open, eyeCx, face, ex, ey);
+        if (P.brows && BROWS[P.brows]) this._glyph(BROWS[P.brows], eyeCx, face, ex, Math.min(ey, 0));
+        if (st.mouth && MOUTHS[st.mouth]) this._glyph(MOUTHS[st.mouth], eyeCx, face, ex, ey, false);
         if (P.acc.includes('shades')) {
           const y = top + 3;
           for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) { this._px(eyeCx - 5 + i, y + j, 'K'); this._px(eyeCx + 2 + i, y + j, 'K'); }
@@ -642,17 +720,18 @@
         }
       }
       if (P.acc.includes('napbook')) this._spr(NAPBOOK, bx - 1, top - 4);
-      if (P.hat && HATS[P.hat]) { const [s, hx, overlap] = HATS[P.hat]; this._spr(s, bx + hx + (bw - BW) / 2, top - s.h + overlap); }
+      if (P.hat && HATS[P.hat]) { const [s, hx, overlap] = HATS[P.hat]; this._spr(s, bx + hx + (bw - BW) / 2, head - s.h + overlap); }
       // signs over the head
-      const sign = (s) => { const x = Math.round(bx + (bw - s.w) / 2), y = top - s.h - 2 - (f % 30 < 15 ? 0 : 1); this._spr(s, x, y); return [x, y]; };
+      const sign = (s) => { const x = Math.round(bx + (bw - s.w) / 2), y = head - s.h - 2 - (f % 30 < 15 ? 0 : 1); this._spr(s, x, y); return [x, y]; };
       if (P.acc.includes('mute')) sign(MUTE);
       if (P.acc.includes('alert')) sign(ALERT);
+      if (P.acc.includes('check')) sign(CHECK);
       if (P.acc.includes('dots')) {   // ... thinking
-        const n = 1 + ((f >> 2) % 3), y = top - 4 - (f % 30 < 15 ? 0 : 1);
+        const n = 1 + ((f >> 2) % 3), y = head - 4 - (f % 30 < 15 ? 0 : 1);
         for (let i = 0; i < n; i++) { this._px(bx + bw + 1 + i * 2, y - i, 'G'); }
       }
       if (P.acc.includes('binoculars')) {
-        const ec = Math.round(cx) + ex, y = top + 2;
+        const ec = Math.round(cx) + ex, y = face + 2;
         [ec - 6, ec + 1].forEach((x0) => { for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) this._px(x0 + i, y + j, i > 0 && i < 3 && j === 1 ? 'a' : 'K'); });
         this._px(ec - 2, y + 1, 'K'); this._px(ec, y + 1, 'K'); this._px(ec - 1, y + 1, 'K');
       }
@@ -677,7 +756,7 @@
         const key = P.held === 'water' && st.tilt ? 'waterTilt' : P.held;
         const it = ITEMS[key];
         const hand = HANDS[st.armL] || HANDS.hold;
-        const x = bx + hand[0] - it.grab[0], y = shoulder + hand[1] + st.heldDy - it.grab[1];
+        const x = abx + hand[0] - it.grab[0], y = shoulder + hand[1] + st.heldDy - it.grab[1];
         this._spr(it.s, x, y);
         if (it.steam) for (let k = 0; k < 3; k++) {
           const ph = (f + k * 4) % 12;
@@ -689,7 +768,7 @@
       // held item, right hand
       if (P.heldR) {
         const hand = HANDS[st.armR] || HANDS.hold;
-        const hxR = bx + bw - 1 - hand[0], hyR = shoulder + hand[1] + st.heldRDy;
+        const hxR = abx + abw - 1 - hand[0], hyR = shoulder + hand[1] + st.heldRDy;
         if (P.heldR === 'staff') {
           const sx = hxR, sy = top - 6;
           for (let y = sy + 2; y <= BY + oy + BH + 1; y++) this._px(sx, y, y === shoulder ? 'H' : 'h');
@@ -720,14 +799,14 @@
         if (!a) return;
         const [rows, ax, ay] = a;
         const s = sp(rows);
-        if (side === 'L') this._spr(s, bx + ax, shoulder + ay);
-        else this._spr(s, bx + bw - ax - s.w, shoulder + ay, true);
+        if (side === 'L') this._spr(s, abx + ax, shoulder + ay);
+        else this._spr(s, abx + abw - ax - s.w, shoulder + ay, true);
       };
       drawArm(st.armL, 'L');
       drawArm(st.armR, 'R');
       if (P.acc.includes('poms')) {
         const pom = (x, y) => { this._px(x, y, 'z'); this._px(x - 1, y, 'i'); this._px(x + 1, y, 'i'); this._px(x, y - 1, 'i'); this._px(x, y + 1, 'i'); };
-        const hand = (name, side) => { const h = HANDS[name] || HANDS.rest; return side === 'L' ? [bx + h[0], shoulder + h[1]] : [bx + bw - 1 - h[0], shoulder + h[1]]; };
+        const hand = (name, side) => { const h = HANDS[name] || HANDS.rest; return side === 'L' ? [abx + h[0], shoulder + h[1]] : [abx + abw - 1 - h[0], shoulder + h[1]]; };
         pom(...hand(st.armL, 'L'));
         pom(...hand(st.armR, 'R'));
       }
@@ -778,6 +857,7 @@
     destroy() { all.delete(this); clearTimeout(this._blinkT); this.el.innerHTML = ''; }
   }
 
+  Critter.addPose = (name, spec) => { POSES[name] = spec; };
   Critter.POSES = Object.keys(POSES);
   Critter.PAL = PAL;
   Critter.SIZE = [CW, CH];
