@@ -1,33 +1,47 @@
 import Foundation
 
-/// What kind of work a tool call is. Picks the mini's pose and the word it
-/// says, and is the same vocabulary for every provider — each CLI names its
-/// tools differently (`Edit`, `apply_patch`, `edit_file`, `write_to_file`…),
-/// so the mapping lives here rather than in four places in the UI.
+/// What kind of work a tool call is. Picks Mochi's pose and the word it says, and is the same vocabulary for every
+/// provider: each CLI names its tools differently (`Edit`, `apply_patch`, `edit_file`, `write_to_file`…), so the
+/// mapping lives here rather than in four places in the UI.
 public enum AgentActivity: String, Codable, Sendable, CaseIterable {
-    case thinking, reading, editing, searching, browsing, running, testing,
-         committing, delegating, planning, compacting, tool
+    case thinking, reading, editing, searching, browsing, running, server, testing, committing, delegating,
+         planning, compacting, tool
+
+    /// The name Mochi's page (brain.js) acts out.
+    public var pose: String {
+        switch self {
+        case .editing: return "writing"
+        case .searching: return "searchCode"
+        case .browsing: return "searchWeb"
+        case .running: return "command"
+        case .delegating: return "agents"
+        case .planning: return "plan"
+        default: return rawValue
+        }
+    }
 }
 
-/// One hook event from any provider's CLI, reduced to what the minis need.
+/// One hook event from any provider's CLI, reduced to what Mochi needs.
 ///
-/// The raw payloads differ per provider (Claude and Codex share a schema,
-/// Cursor's is camelCase with `conversation_id`, Antigravity's carries no
-/// event name at all), so `HookNormalizer` folds them into this.
+/// The raw payloads differ per provider (Claude and Codex share a schema, Cursor's is camelCase with
+/// `conversation_id`, Antigravity's carries no event name at all), so `HookNormalizer` folds them into this.
 public struct AgentEvent: Equatable, Sendable {
     public enum Kind: String, Sendable {
-        /// A session opened. Spawns the mini without alerting.
+        /// A session opened. Shows up without alerting.
         case sessionStart
         /// You sent a prompt.
         case prompt
         /// The model is thinking between tool calls.
         case thought
         case toolStart
-        /// A tool finished. Providers that only report *after* a tool ran
-        /// (Cursor, Antigravity) show their activity from this alone.
+        /// A tool finished. Providers that only report *after* a tool ran (Cursor, Antigravity) show their activity
+        /// from this alone.
         case toolEnd
         case toolFailed
         case compact
+        case compactEnd
+        /// A helper agent started, finished, or did something itself (which keeps it counted as working).
+        case subagentStart, subagentStop, subagentActivity
         /// Waiting on you: a permission prompt or a question.
         case needsInput
         /// The turn finished and it's your move.
@@ -39,22 +53,40 @@ public struct AgentEvent: Equatable, Sendable {
         case sessionEnd
     }
 
+    /// What a session waiting on you wants.
+    public enum Need: String, Sendable { case permission, question }
+
     public var provider: String
     public var sessionID: String
     public var kind: Kind
     public var activity: AgentActivity?
-    /// The file, command or search being worked on — short, for a bubble.
+    /// The file, command or search being worked on: short, for a bubble.
     public var detail: String
     public var cwd: String
+    /// The tool's own name (`Edit`, `apply_patch`…), for "needs your ok to use Bash" and similar.
+    public var toolName = ""
+    /// Which helper agent a subagent event is about.
+    public var agentID = ""
+    public var need = Need.permission
+    /// From a to-do list update: how many are done, out of how many.
+    public var todos: [Int]?
+    /// A session that just started up (not resumed or cleared): Mochi says hello.
+    public var greet = false
 
-    public init(provider: String, sessionID: String, kind: Kind,
-                activity: AgentActivity? = nil, detail: String = "", cwd: String = "") {
+    public init(provider: String, sessionID: String, kind: Kind, activity: AgentActivity? = nil, detail: String = "",
+                cwd: String = "", toolName: String = "", agentID: String = "", need: Need = .permission,
+                todos: [Int]? = nil, greet: Bool = false) {
         self.provider = provider
         self.sessionID = sessionID
         self.kind = kind
         self.activity = activity
         self.detail = detail
         self.cwd = cwd
+        self.toolName = toolName
+        self.agentID = agentID
+        self.need = need
+        self.todos = todos
+        self.greet = greet
     }
 }
 
@@ -63,12 +95,11 @@ public enum HookNormalizer {
 
     /// - Parameters:
     ///   - provider: which CLI sent it (`Provider.id`).
-    ///   - event: the event name when the hook script had to pass it itself,
-    ///     because the payload doesn't carry one (Antigravity).
+    ///   - event: the event name when the hook script had to pass it itself, because the payload doesn't carry one
+    ///     (Antigravity).
     ///   - session: a session id from the hook's environment, for the same reason.
     ///   - json: the payload the CLI wrote to the hook's stdin.
-    /// - Returns: nil for events with nothing to show (sub-agent chatter,
-    ///   idle-prompt notifications, events this app doesn't use).
+    /// - Returns: nil for events with nothing to show (idle-prompt notifications, events Mochi doesn't use).
     public static func normalize(provider: String, event: String?, session: String?,
                                  json: [String: Any]) -> AgentEvent? {
         let name = (json["hook_event_name"] as? String) ?? (json["hookEventName"] as? String) ?? event ?? ""
@@ -83,7 +114,7 @@ public enum HookNormalizer {
         let input = toolInput(json)
         func ev(_ kind: AgentEvent.Kind, _ activity: AgentActivity? = nil, _ detail: String = "") -> AgentEvent {
             AgentEvent(provider: provider, sessionID: sid.isEmpty ? "default" : sid, kind: kind,
-                       activity: activity, detail: detail, cwd: cwd)
+                       activity: activity, detail: detail, cwd: cwd, toolName: tool)
         }
 
         switch provider {
@@ -93,29 +124,47 @@ public enum HookNormalizer {
             return antigravity(name, tool: tool, input: input, ev)
         default:
             // Claude Code and Codex share event names and payload shape.
-            // A sub-agent's own tool calls carry its agent_id: they'd make the
-            // parent look busy with work it isn't doing itself, so skip them.
-            if let agent = json["agent_id"] as? String, !agent.isEmpty,
-               !["SubagentStart", "SubagentStop"].contains(name) { return nil }
+            let agent = json["agent_id"] as? String ?? ""
+            // A helper agent's own tool calls: only count it as still working, so the parent doesn't look busy
+            // with work it isn't doing itself.
+            if !agent.isEmpty, !["SubagentStart", "SubagentStop"].contains(name) {
+                var e = ev(.subagentActivity)
+                e.agentID = agent
+                return e
+            }
             switch name {
-            case "SessionStart": return ev(.sessionStart)
+            case "SessionStart":
+                var e = ev(.sessionStart)
+                e.greet = json["source"] as? String == "startup"
+                return e
             case "UserPromptSubmit": return ev(.prompt)
-            case "PreToolUse": return ev(.toolStart, activity(tool, input), detail(tool, input))
+            case "PreToolUse":
+                var e = ev(.toolStart, activity(tool, input), detail(tool, input))
+                e.todos = todos(input)
+                return e
             case "PostToolUse": return ev(.toolEnd, activity(tool, input), detail(tool, input))
             case "PostToolUseFailure":
                 if json["is_interrupt"] as? Bool == true { return ev(.interrupted) }
                 return ev(.toolFailed, activity(tool, input), detail(tool, input))
             case "PermissionRequest": return ev(.needsInput, activity(tool, input), detail(tool, input))
             case "Notification":
-                // Claude Code also notifies "waiting for your input" after it's
-                // done, and for logins — the Stop event already covers the first.
+                // Claude Code also notifies "waiting for your input" after it's done, and for logins: the Stop
+                // event already covers the first.
                 switch json["notification_type"] as? String ?? "" {
-                case "permission_prompt", "elicitation_dialog", "elicitation_url_dialog", "agent_needs_input":
+                case "permission_prompt":
                     return ev(.needsInput)
+                case "elicitation_dialog", "elicitation_url_dialog", "agent_needs_input":
+                    var e = ev(.needsInput)
+                    e.need = .question
+                    return e
                 default: return nil
                 }
-            case "SubagentStart": return ev(.toolStart, .delegating)
+            case "SubagentStart", "SubagentStop":
+                var e = ev(name == "SubagentStart" ? .subagentStart : .subagentStop)
+                e.agentID = agent
+                return e
             case "PreCompact": return ev(.compact, .compacting)
+            case "PostCompact": return ev(.compactEnd)
             case "Stop": return ev(.done)
             case "StopFailure": return ev(.failed)
             case "Interrupt": return ev(.interrupted)
@@ -188,6 +237,12 @@ public enum HookNormalizer {
         return [:]
     }
 
+    /// A to-do list update's progress: [done, total].
+    static func todos(_ input: [String: Any]) -> [Int]? {
+        guard let list = input["todos"] as? [[String: Any]], !list.isEmpty else { return nil }
+        return [list.filter { $0["status"] as? String == "completed" }.count, list.count]
+    }
+
     /// The kind of work a tool call is, across every provider's tool names.
     public static func activity(_ tool: String, _ input: [String: Any]) -> AgentActivity {
         let t = tool.lowercased()
@@ -219,11 +274,13 @@ public enum HookNormalizer {
         if command.range(of: #"\bgit\s+(commit|push)\b"#, options: .regularExpression) != nil { return .committing }
         if command.range(of: #"\b(test|tests|jest|vitest|pytest|mocha|playwright|rspec|xcodebuild test|swift test|go test|cargo test)\b"#,
                          options: .regularExpression) != nil { return .testing }
+        if command.range(of: #"\b(run dev|npm start|yarn dev|pnpm dev|vite|next dev|http-server|serve|runserver|rails s)\b"#,
+                         options: .regularExpression) != nil { return .server }
         return .running
     }
 
-    /// The command a shell tool is running. Codex passes argv as an array
-    /// (`["bash", "-lc", "…"]`); Antigravity calls it `CommandLine`.
+    /// The command a shell tool is running. Codex passes argv as an array (`["bash", "-lc", "…"]`); Antigravity
+    /// calls it `CommandLine`.
     static func command(_ input: [String: Any]) -> String {
         if let c = firstString(input, ["command", "cmd", "CommandLine", "commandLine"]) { return c }
         if let argv = (input["command"] ?? input["cmd"]) as? [String] { return argv.last ?? "" }

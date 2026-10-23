@@ -30,31 +30,39 @@ final class HookInstallerTests: XCTestCase {
         return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
 
-    func testClaudeKeepsOtherHooksAndSettings() throws {
-        let original = #"{"model":"opus","hooks":{"Stop":[{"hooks":[{"type":"command","command":"say done"}]}]}}"#
-        try write(".claude/settings.json", original)
-        XCTAssertFalse(HookInstaller.isInstalled("claude"))
+    func testCodexKeepsOtherHooksAndSettings() throws {
+        let original = #"{"model":"o5","hooks":{"Stop":[{"hooks":[{"type":"command","command":"say done"}]}]}}"#
+        try write(".codex/hooks.json", original)
+        XCTAssertFalse(HookInstaller.isInstalled("codex"))
 
-        try HookInstaller.setInstalled("claude", true)
-        XCTAssertTrue(HookInstaller.isInstalled("claude"))
-        let on = try json(".claude/settings.json")
-        XCTAssertEqual(on["model"] as? String, "opus")
+        try HookInstaller.setInstalled("codex", true)
+        XCTAssertTrue(HookInstaller.isInstalled("codex"))
+        let on = try json(".codex/hooks.json")
+        XCTAssertEqual(on["model"] as? String, "o5")
         let stop = try XCTUnwrap((on["hooks"] as? [String: Any])?["Stop"] as? [[String: Any]])
         XCTAssertEqual(stop.count, 2)
         let mine = try XCTUnwrap((stop[1]["hooks"] as? [[String: Any]])?.first)
-        XCTAssertEqual(mine["async"] as? Bool, true)
-        XCTAssertTrue((mine["command"] as? String ?? "").hasSuffix("aiusage-minis.sh claude Stop"))
-        XCTAssertTrue(FileManager.default.isExecutableFile(atPath: home.appendingPathComponent(".claude/hooks/aiusage-minis.sh").path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: home.appendingPathComponent(".claude/settings.json.aiusage-backup").path))
+        XCTAssertEqual(mine["timeout"] as? Int, 3)
+        XCTAssertTrue((mine["command"] as? String ?? "").hasSuffix("mochi-hook.sh codex Stop"))
+        XCTAssertTrue(FileManager.default.isExecutableFile(atPath: home.appendingPathComponent(".codex/hooks/mochi-hook.sh").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: home.appendingPathComponent(".codex/hooks.json.mochi-backup").path))
 
         // Connecting twice doesn't add a second copy.
-        try HookInstaller.setInstalled("claude", true)
-        XCTAssertEqual(((try json(".claude/settings.json"))["hooks"] as? [String: Any])?["Stop"].map { ($0 as! [Any]).count }, 2)
+        try HookInstaller.setInstalled("codex", true)
+        XCTAssertEqual(((try json(".codex/hooks.json"))["hooks"] as? [String: Any])?["Stop"].map { ($0 as! [Any]).count }, 2)
 
-        try HookInstaller.setInstalled("claude", false)
-        let off = try json(".claude/settings.json")
+        try HookInstaller.setInstalled("codex", false)
+        let off = try json(".codex/hooks.json")
         XCTAssertEqual(off as NSDictionary, try JSONSerialization.jsonObject(with: Data(original.utf8)) as! NSDictionary)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: home.appendingPathComponent(".claude/hooks/aiusage-minis.sh").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: home.appendingPathComponent(".codex/hooks/mochi-hook.sh").path))
+    }
+
+    func testConnectingTakesOutAIUsagesOldHook() throws {
+        try write(".codex/hooks.json", #"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"/x/.codex/hooks/aiusage-minis.sh codex Stop"}]}]}}"#)
+        try HookInstaller.setInstalled("codex", true)
+        let stop = try XCTUnwrap((try json(".codex/hooks.json")["hooks"] as? [String: Any])?["Stop"] as? [[String: Any]])
+        XCTAssertEqual(stop.count, 1)
+        XCTAssertFalse("\(stop)".contains("aiusage-minis"))
     }
 
     func testCursorIsFlatAndVersioned() throws {
@@ -64,7 +72,7 @@ final class HookInstallerTests: XCTestCase {
         let on = try json(".cursor/hooks.json")
         XCTAssertEqual(on["version"] as? Int, 1)
         let stop = try XCTUnwrap((on["hooks"] as? [String: Any])?["stop"] as? [[String: Any]])
-        XCTAssertTrue((stop[0]["command"] as? String ?? "").hasSuffix("aiusage-minis.sh cursor stop"))
+        XCTAssertTrue((stop[0]["command"] as? String ?? "").hasSuffix("mochi-hook.sh cursor stop"))
         // Nothing that can gate an action.
         let events = Set((on["hooks"] as? [String: Any] ?? [:]).keys)
         XCTAssertTrue(events.isDisjoint(with: ["preToolUse", "beforeShellExecution", "beforeMCPExecution", "beforeReadFile", "subagentStart"]))
@@ -82,11 +90,11 @@ final class HookInstallerTests: XCTestCase {
         try HookInstaller.setInstalled("antigravity", true)
         let agy = try json(".gemini/antigravity-cli/hooks.json")
         XCTAssertNotNil(agy["mine"])
-        let ours = try XCTUnwrap(agy["aiusage-minis"] as? [String: Any])
+        let ours = try XCTUnwrap(agy["mochi"] as? [String: Any])
         XCTAssertNil(ours["PreToolUse"], "PreToolUse decides whether a tool may run; leave it alone")
         XCTAssertEqual((ours["PostToolUse"] as? [[String: Any]])?.first?["matcher"] as? String, "*")
         try HookInstaller.setInstalled("antigravity", false)
-        XCTAssertNil(try json(".gemini/antigravity-cli/hooks.json")["aiusage-minis"])
+        XCTAssertNil(try json(".gemini/antigravity-cli/hooks.json")["mochi"])
     }
 
     func testRefusesANonObjectConfig() throws {

@@ -40,7 +40,7 @@ public final class Settings: @unchecked Sendable {
         var minis: MinisConfig?
     }
 
-    private let queue = DispatchQueue(label: "com.eli.aiusage.settings")
+    private let queue = DispatchQueue(label: "com.joey.mochi.settings")
     private var payload = Payload()
 
     public static let defaultProviderEnabled: [String: Bool] =
@@ -52,7 +52,7 @@ public final class Settings: @unchecked Sendable {
 
     public static var supportDirectory: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let dir = base.appendingPathComponent("AiUsage", isDirectory: true)
+        let dir = base.appendingPathComponent("Mochi", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }

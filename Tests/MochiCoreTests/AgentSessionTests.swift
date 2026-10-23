@@ -1,9 +1,8 @@
 import XCTest
 @testable import MochiCore
 
-/// The hook payloads each provider sends, and the alert rules the minis follow:
-/// an alert goes up when a turn finishes or a session needs you, and stays up
-/// until you respond in that session or acknowledge it.
+/// The hook payloads each provider sends, what Mochi acts out from them, and the alert rules: an alert goes up when
+/// a turn finishes or a session needs you, and stays up until you respond in that session or acknowledge it.
 final class AgentSessionTests: XCTestCase {
 
     private func norm(_ provider: String, _ json: [String: Any], event: String? = nil, session: String? = nil) -> AgentEvent? {
@@ -30,9 +29,42 @@ final class AgentSessionTests: XCTestCase {
                                        "notification_type": "permission_prompt"])?.kind, .needsInput)
     }
 
-    func testSubagentToolCallsAreSkipped() {
-        XCTAssertNil(norm("claude", ["hook_event_name": "PreToolUse", "session_id": "s1", "agent_id": "a1",
-                                     "tool_name": "Read", "tool_input": [:]]))
+    func testAHelpersOwnToolCallsOnlyCountItAsWorking() throws {
+        let e = try XCTUnwrap(norm("claude", ["hook_event_name": "PreToolUse", "session_id": "s1", "agent_id": "a1",
+                                              "tool_name": "Read", "tool_input": [:]]))
+        XCTAssertEqual(e.kind, .subagentActivity)
+        XCTAssertEqual(e.agentID, "a1")
+        var store = AgentSessionStore()
+        store.apply(AgentEvent(provider: "claude", sessionID: "s1", kind: .prompt))
+        store.apply(e)
+        XCTAssertEqual(store.summary(for: "claude").state, "agents")
+        XCTAssertNil(store.sessions["claude:s1"]?.activity)   // the parent isn't reading anything itself
+    }
+
+    func testQuestionsAndPermissionsAreToldApart() {
+        XCTAssertEqual(norm("claude", ["hook_event_name": "Notification", "session_id": "s",
+                                       "notification_type": "elicitation_dialog"])?.need, .question)
+        let ask = norm("claude", ["hook_event_name": "PermissionRequest", "session_id": "s", "tool_name": "Bash",
+                                  "tool_input": ["command": "rm -rf build"]])
+        XCTAssertEqual(ask?.need, .permission)
+        XCTAssertEqual(ask?.toolName, "Bash")
+        var store = AgentSessionStore()
+        store.apply(ask!)
+        XCTAssertEqual(store.sessions["claude:s"]?.describe(Date()), "needs your ok to use Bash")
+    }
+
+    func testTodoProgressAndHello() throws {
+        let todo = try XCTUnwrap(norm("claude", ["hook_event_name": "PreToolUse", "session_id": "s", "tool_name": "TodoWrite",
+                                                 "tool_input": ["todos": [["status": "completed"], ["status": "pending"], ["status": "pending"]]]]))
+        XCTAssertEqual(todo.todos, [1, 3])
+        XCTAssertEqual(todo.activity, .planning)
+        XCTAssertEqual(norm("claude", ["hook_event_name": "SessionStart", "session_id": "s", "source": "startup"])?.greet, true)
+        XCTAssertEqual(norm("claude", ["hook_event_name": "SessionStart", "session_id": "s", "source": "resume"])?.greet, false)
+        var store = AgentSessionStore()
+        let t0 = Date()
+        store.apply(norm("claude", ["hook_event_name": "SessionStart", "session_id": "s", "source": "startup"])!, now: t0)
+        XCTAssertEqual(store.summary(for: "claude", now: t0.addingTimeInterval(1)).state, "hello")
+        XCTAssertEqual(store.summary(for: "claude", now: t0.addingTimeInterval(9)).state, "")
     }
 
     func testCodexShellArgvAndCommit() throws {
@@ -120,13 +152,43 @@ final class AgentSessionTests: XCTestCase {
         XCTAssertEqual(store.apply(AgentEvent(provider: "cursor", sessionID: "z", kind: .sessionEnd)), .removed)
     }
 
-    func testDisplayLingersOnAFinishedTool() {
+    func testAFinishedToolLingersBeforeThinking() {
         var store = AgentSessionStore()
         let t0 = Date()
         store.apply(AgentEvent(provider: "claude", sessionID: "s", kind: .toolEnd, activity: .reading, detail: "a.txt"), now: t0)
         let s = store.sessions["claude:s"]!
-        XCTAssertEqual(s.display(now: t0.addingTimeInterval(1)).state, "reading")
-        XCTAssertEqual(s.display(now: t0.addingTimeInterval(5)).state, "thinking")
+        XCTAssertEqual(s.state(t0.addingTimeInterval(1)), "reading")
+        XCTAssertEqual(s.state(t0.addingTimeInterval(5)), "thinking")
+    }
+
+    func testAHeldAlertKeepsShowingUntilAnswered() {
+        var store = AgentSessionStore()
+        let t0 = Date()
+        store.apply(AgentEvent(provider: "codex", sessionID: "s", kind: .prompt), now: t0)
+        store.apply(AgentEvent(provider: "codex", sessionID: "s", kind: .done), now: t0)
+        XCTAssertEqual(store.summary(for: "codex", now: t0.addingTimeInterval(3600)).state, "done")   // long after the cheer
+        store.apply(AgentEvent(provider: "codex", sessionID: "s", kind: .failed), now: t0)
+        XCTAssertEqual(store.summary(for: "codex", now: t0.addingTimeInterval(3600)).state, "error")
+        store.acknowledge("codex:s")
+        XCTAssertEqual(store.summary(for: "codex", now: t0.addingTimeInterval(3600)).state, "")
+    }
+
+    func testPayloadNamesTheAgentAndWhatItNeeds() {
+        var store = AgentSessionStore()
+        store.apply(AgentEvent(provider: "codex", sessionID: "s", kind: .needsInput, cwd: "/Users/me/web", toolName: "shell"))
+        let d = store.payload(for: "codex", name: "Codex")
+        XCTAssertEqual(d["state"] as? String, "waiting")
+        XCTAssertEqual(d["agent"] as? String, "Codex")
+        XCTAssertEqual(d["project"] as? String, "web")
+        XCTAssertEqual(d["needTool"] as? String, "shell")
+        XCTAssertEqual(d["alert"] as? String, "needsInput")
+        XCTAssertEqual(store.payload(for: "claude", name: "Claude")["state"] as? String, "")   // someone else's session
+    }
+
+    func testWorktreeFoldersNameTheirProject() {
+        var s = AgentSession(provider: "claude", sessionID: "x", now: Date())
+        s.cwd = "/Users/me/Library/Application Support/parallax/worktrees/mochi-54f25aee/01a1616b-ad6d-7123-9abc-123456789abc"
+        XCTAssertEqual(s.project, "mochi")
     }
 
     func testTheMiniShowsWhatNeedsYouMost() {
@@ -137,11 +199,11 @@ final class AgentSessionTests: XCTestCase {
         XCTAssertEqual(store.shown(for: "codex")?.sessionID, "busy")   // another provider's alert isn't its business
         store.apply(AgentEvent(provider: "codex", sessionID: "done", kind: .done), now: t0)
         store.apply(AgentEvent(provider: "codex", sessionID: "ask", kind: .needsInput), now: t0.addingTimeInterval(5))
-        XCTAssertEqual(store.shown(for: "codex")?.sessionID, "ask")    // input beats a finish, even a newer one
+        XCTAssertEqual(store.shown(for: "codex")?.sessionID, "ask")    // waiting on you beats everything
         store.acknowledge("codex:ask")
-        XCTAssertEqual(store.shown(for: "codex")?.sessionID, "done")
-        store.acknowledge("codex:done")
-        XCTAssertEqual(store.shown(for: "codex")?.sessionID, "busy")   // then whatever's working
+        XCTAssertEqual(store.shown(for: "codex")?.sessionID, "busy")   // then work in progress
+        store.apply(AgentEvent(provider: "codex", sessionID: "busy", kind: .interrupted), now: t0)
+        XCTAssertEqual(store.summary(for: "codex", now: t0).session?.sessionID, "done")   // then the finished one, held
         XCTAssertNil(store.shown(for: "cursor"))
     }
 

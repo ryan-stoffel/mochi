@@ -1,19 +1,17 @@
 import Foundation
 import JavaScriptCore
 
-/// Connects each provider's CLI to the minis by adding a hook to its config,
-/// or takes it back out.
+/// Connects Codex, Cursor and Antigravity to Mochi by adding a hook to each CLI's config, or takes it back out.
+/// (Claude Code connects through the app's own Claude connect, which also adds Mochi's status line.)
 ///
-/// Every provider gets the same tiny shell script, copied into its own config
-/// folder (no spaces in those paths, so it works whether or not the CLI runs
-/// hooks through a shell). The script hands the event to `HookServer` on
-/// 127.0.0.1 in the background and exits at once, so it never slows down or
-/// fails the CLI. Configs are backed up before every write, and everything
-/// else in them is kept, in the same order.
+/// Every provider gets the same tiny shell script, copied into its own config folder (no spaces in those paths, so it
+/// works whether or not the CLI runs hooks through a shell). The script hands the event to Mochi on 127.0.0.1 in the
+/// background and exits at once, so it never slows down or fails the CLI. Configs are backed up before every write,
+/// and everything else in them is kept, in the same order. Hooks AI Usage added are taken out on the way.
 public enum HookInstaller {
 
-    /// The port `HookServer` listens on. Mochi uses 47833, so both can run.
-    public static let port: UInt16 = 47834
+    /// The port Mochi's hook listener is on, shared with Claude Code's hooks.
+    public static let port: UInt16 = 47833
 
     /// Overridable so tests can point it at a temporary folder.
     public static var home = FileManager.default.homeDirectoryForCurrentUser
@@ -32,18 +30,11 @@ public enum HookInstaller {
         /// Something the user still has to do after connecting, if anything.
         public let followUp: String?
 
-        var script: URL { config.deletingLastPathComponent().appendingPathComponent("hooks/aiusage-minis.sh") }
-        var backup: URL { config.appendingPathExtension("aiusage-backup") }
+        var script: URL { config.deletingLastPathComponent().appendingPathComponent("hooks/mochi-hook.sh") }
+        var backup: URL { config.appendingPathExtension("mochi-backup") }
     }
 
     public static let targets: [String: Target] = [
-        "claude": Target(
-            provider: "claude",
-            relativeConfig: ".claude/settings.json",
-            events: ["SessionStart", "SessionEnd", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure",
-                     "PermissionRequest", "Notification", "Stop", "StopFailure", "SubagentStart", "PreCompact"],
-            matcherEvents: [], format: "claude",
-            followUp: "Restart running Claude Code sessions to pick it up."),
         "codex": Target(
             provider: "codex",
             relativeConfig: ".codex/hooks.json",
@@ -74,7 +65,7 @@ public enum HookInstaller {
 
     public static func isInstalled(_ provider: String) -> Bool {
         guard let t = targets[provider], let text = try? String(contentsOf: t.config, encoding: .utf8) else { return false }
-        return text.contains("aiusage-minis.sh")
+        return text.contains("mochi-hook.sh")
     }
 
     /// Whether the CLI has a config folder at all — i.e. it's been run here.
@@ -96,7 +87,7 @@ public enum HookInstaller {
         let r = ctx.objectForKeyedSubscript("configure")
             .call(withArguments: [text, on, t.format, t.events, command, t.matcherEvents])
         if let err = ctx.exception?.toString() ?? r?.objectForKeyedSubscript("error")?.toString(), err != "undefined" {
-            throw NSError(domain: "AiUsage", code: 1,
+            throw NSError(domain: "Mochi", code: 1,
                           userInfo: [NSLocalizedDescriptionKey: "\(t.config.lastPathComponent): \(err)"])
         }
         guard let out = r?.objectForKeyedSubscript("text")?.toString() else { return }
@@ -119,7 +110,7 @@ public enum HookInstaller {
     private static func writeScript(_ t: Target) throws {
         let script = """
         #!/bin/sh
-        # AI Usage minis: hands this \(t.provider) hook event to AI Usage, on this Mac only.
+        # Mochi: hands this \(t.provider) hook event to Mochi, on this Mac only.
         # Runs the hand-off in the background and exits at once: it never slows down or fails the CLI.
         provider="$1"; event="$2"
         body=$(cat)
@@ -127,8 +118,9 @@ public enum HookInstaller {
         case "$provider:$event" in
           codex:Stop|antigravity:*) printf '{}' ;;
         esac
-        [ -n "$AIUSAGE_PROBE" ] && exit 0   # AI Usage itself reading usage: not a session anyone is working in
-        printf '%s' "$body" | /usr/bin/curl -s -m 2 -o /dev/null -H 'X-AiUsage: 1' -H "X-Pid: $PPID" \\
+        # Mochi itself reading usage from the CLI: not a session anyone is working in
+        [ -n "$MOCHI_USAGE_CHECK$AIUSAGE_PROBE" ] && exit 0
+        printf '%s' "$body" | /usr/bin/curl -s -m 2 -o /dev/null -H 'X-Mochi: 1' -H "X-Pid: $PPID" \\
           -H "X-Event: $event" -H "X-Session: ${ANTIGRAVITY_CONVERSATION_ID:-}" -H 'Content-Type: application/json' \\
           --data-binary @- "http://127.0.0.1:\(port)/hook/$provider" >/dev/null 2>&1 &
         exit 0
@@ -141,22 +133,23 @@ public enum HookInstaller {
     }
 
     /// Formats:
-    ///  - claude / codex: `{hooks: {Event: [{matcher?, hooks: [{type, command}]}]}}`
+    ///  - codex:          `{hooks: {Event: [{matcher?, hooks: [{type, command}]}]}}`
     ///  - cursor:         `{version: 1, hooks: {event: [{command}]}}`
     ///  - antigravity:    `{<group>: {Event: [{matcher?, hooks: [{type, command}]}]}}`
     private static let configureJS = #"""
     function configure(text, on, fmt, events, command, matcherEvents) {
       var s = text.trim() ? JSON.parse(text) : {};
       if (!s || typeof s !== 'object' || Array.isArray(s)) return { error: 'must be a JSON object.' };
-      var mine = function (h) { return h && typeof h.command === 'string' && h.command.indexOf('aiusage-minis.sh') !== -1; };
+      // ours, and AI Usage's before it
+      var mine = function (h) { return h && typeof h.command === 'string' && /mochi-hook\.sh|aiusage-minis\.sh/.test(h.command); };
       var handler = function (ev) {
         var h = { type: 'command', command: command + ' ' + ev };
-        if (fmt === 'claude') h.async = true;
         if (fmt === 'codex' || fmt === 'antigravity') h.timeout = 3;
         return h;
       };
       if (fmt === 'antigravity') {
         delete s['aiusage-minis'];
+        delete s['mochi'];
         if (on) {
           var group = {};
           events.forEach(function (ev) {
@@ -164,7 +157,7 @@ public enum HookInstaller {
             if (matcherEvents.indexOf(ev) !== -1) g = { matcher: '*', hooks: g.hooks };
             group[ev] = [g];
           });
-          s['aiusage-minis'] = group;
+          s['mochi'] = group;
         }
         return { text: JSON.stringify(s, null, 2) + '\n' };
       }
