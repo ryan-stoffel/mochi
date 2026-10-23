@@ -151,7 +151,8 @@ public final class UsageService: ObservableObject {
             switch r {
             case .offline: claude.error = "You're offline."; claude.errorType = "offline"
             case .signedOut(let m): claude.error = m ?? "Not logged in. Run claude in a terminal to log in."; claude.errorType = "auth"
-            case .rateLimited: claude.error = "Asked too often; trying again in a few minutes."; claude.errorType = nil
+            // being told to slow down isn't a problem worth a banner while there are numbers: they just age
+            case .rateLimited: if !hasData { claude.error = "Asked too often; trying again in a few minutes."; claude.errorType = nil }
             case .failed(let m): claude.error = m; claude.errorType = nil
             case .data: break
             }
@@ -182,7 +183,7 @@ public final class UsageService: ObservableObject {
             providers[id] = keep("You're offline; showing the last numbers.")
         case .rateLimited:
             backoff[id] = Date().addingTimeInterval(Self.backoffInterval)
-            providers[id] = keep("Asked too often; trying again in a few minutes.")
+            providers[id] = hasData ? ProviderStatus(state: .loggedIn) : keep("Asked too often; trying again in a few minutes.")
         case .failed(let message):
             providers[id] = keep(message)
         }

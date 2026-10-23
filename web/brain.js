@@ -38,9 +38,9 @@
     st.setProperty('--h', layout.h + 'px');
     st.setProperty('--pet-left', (layout.w - 46 * k) / 2 + 'px');
     st.setProperty('--pet-bottom', layout.below + 'px');
-    // just over the head, whatever species: the top of its head, plus room for a sign over it
+    // just over the head, whatever species: the top of its head, plus room for a sign over it ("!" or a check mark)
     const head = Critter.headRow ? Critter.headRow(look().species) : 20;
-    st.setProperty('--bubble-above', layout.below + (34 - head + 5) * k + 4 + 'px');
+    st.setProperty('--bubble-above', layout.below + (34 - head + 9) * k + 4 + 'px');
     st.setProperty('--bubble-below', layout.h - layout.below + 10 + 'px');
   }
   applyLayout();
