@@ -1,8 +1,8 @@
 # Mochi
 
-A pixel critter that lives on your Mac's screens: it wanders around, hops onto your windows, copies what you're doing, and nudges you to drink water, eat, and get up. It also follows your coding agents (Claude Code, Codex, Cursor and Antigravity) and keeps an eye on how much of each AI plan you've used, in your menu bar or around the notch.
+How much of your Claude, Codex, Antigravity and Cursor plans you've used, in your menu bar or around the notch, read straight from the tools you already have. Your coding agents alert you when they finish, fail or need you.
 
-Pick the agent Mochi follows: Claude, Codex, Antigravity or Cursor. Mochi looks the same for all of them, and wears whatever you dress it up in.
+Turn on **Mochi** in Settings and a pixel pet lives on your screens too: it acts out what Claude or Codex is doing, wanders around, hops onto your windows, and nudges you to drink water, eat and get up.
 
 ![every pose](renders/_sheet.png)
 
@@ -14,11 +14,32 @@ Pick the agent Mochi follows: Claude, Codex, Antigravity or Cursor. Mochi looks 
 
    Or, from Terminal: `xattr -dr com.apple.quarantine /Applications/Mochi.app`
 
-Mochi has no Dock icon. Its menu bar icon is Mochi with your plan's usage beside it; click it for every provider's usage. Right-click Mochi for its panel. **Quit** is in both, and in Settings. If you hide Mochi, open the app again to bring it back.
+Mochi has no Dock icon. Its menu bar icon is your provider's logo with its usage beside it; click it for every provider's usage, **Settings…** and **Quit**. Opening the app again opens Settings.
 
 AI Usage ([eli-manning/Ai-Usage](https://github.com/eli-manning/Ai-Usage)) is part of Mochi now: its usage sources, menu bar dropdown, notch view and agent hooks live here.
 
-## What it does
+## Usage
+
+Your plan's limits for Claude, Codex, Cursor and Antigravity: how much is used and when each resets. The menu bar shows the provider you picked; click it for all of them, each with its history over the last day or week. Prefer the notch? **Settings → General** moves it there: the logo and its % sit beside the notch, and resting the pointer on it opens an island with a ring for every limit and a tab for each provider. Right-click the island for Refresh, Settings and Quit.
+
+Mochi reads each plan straight from the provider, with the sign-in its CLI already has on your Mac, and falls back if that doesn't answer:
+
+| | First | Then | Last resort |
+|---|---|---|---|
+| Claude | Anthropic's usage API (Claude Code's sign-in, from the keychain) | Claude Code's status line, after every message, once connected | the `/usage` screen of `claude` |
+| Codex | ChatGPT's usage API (`~/.codex/auth.json`) | Codex's own session logs | the `/status` screen of `codex` |
+| Cursor | Cursor's usage API (cursor-agent's sign-in, or the editor's) | | the `/usage` screen of `cursor-agent` |
+| Antigravity | Google Cloud Code's quota API (`agy`'s sign-in, from the keychain) | | the `/usage` screen of `agy` |
+
+Every provider refreshes on its own, so a slow one never holds up the rest: the APIs every 2 minutes (Claude's every 5), a CLI screen at most every 15, and again whenever you open the dropdown or the island. When a provider says to slow down, Mochi waits 90 seconds, doubling up to 10 minutes. The last numbers you saw show straight away at launch and stay up, marked stale, if a check fails. Mochi never refreshes or stores a sign-in itself: an expired one waits for its CLI to renew it the next time you use it (for `agy`, Mochi runs `agy models`, which renews it and uses none of your plan). Reading a CLI's screen is a local command; it doesn't send a prompt or use any of your plan. Antigravity needs `agy`'s first-run setup finished once in a terminal before its usage can be read.
+
+## Your agents
+
+Connect each agent in **Settings → Agents** and restart its sessions. Finished, failed and waiting-on-you turns **wait for you**: a sound plays (and repeats, if you like) and a notification stays in Notification Center until you reply in that session or click the notification. Each kind has its own sound, and each can be turned off, in **Settings → Alerts**. Every connected agent alerts you.
+
+## Mochi, the pet
+
+Off until you turn it on in **Settings → Mochi** (or in setup). Pick whether it follows Claude or Codex. Drag it anywhere and let go (or throw it); click to boop it. Right-clicking it does nothing: its options are all in **Settings → Mochi**, with a **Dress up** menu for its costumes.
 
 | You... | Mochi... |
 |---|---|
@@ -64,9 +85,9 @@ It sticks to the bottom of the screen and to windows with room above them: a win
 | run the battery under 20% | looks drained and tells you; does a happy zap when you plug in |
 | switch to dark / light mode | puts on a nightcap / sunglasses |
 
-### Your agents
+### Your agent
 
-Connect the agent Mochi follows from its panel (**Usage → Connect**, or say yes when Mochi offers), or any of them in **Settings → Agents**, and restart its sessions. From then on Mochi acts out what it's doing, in a terminal, an editor or a desktop app, and says a word about it:
+With its agent connected (say yes when Mochi offers, or use **Settings → Agents**), Mochi acts out what it's doing, in a terminal, an editor or a desktop app, and says a word about it:
 
 | Your agent is... | Mochi... |
 |---|---|
@@ -83,45 +104,23 @@ Connect the agent Mochi follows from its panel (**Usage → Connect**, or say ye
 | waiting for your OK, or asking you something | hops over to your pointer with a "!" and asks; **show me** switches to the app that session is in |
 | done | cheers, then holds a check mark: "done! your turn" |
 
-Finished, failed and waiting-on-you turns **wait for you**: Mochi keeps showing it, a sound plays (and repeats, if you like) and a notification stays in Notification Center until you reply in that session, click **show me** or **ok**, click the session in the panel, or click the notification. Each kind has its own sound, and each can be turned off, in **Settings → Alerts**. Every connected agent alerts you, whichever one Mochi follows.
+A turn that's waiting for you also stays in Mochi's bubble until you reply, click **show me** or click **ok**.
 
 The idea and the hook events come from [claude-desktop-pet](https://github.com/Harriszed/claude-desktop-pet) (MIT), rebuilt here natively with Mochi's own art.
 
 With several sessions going, the most urgent one wins (anything that needs you first). Turn off **Say what it's doing** to only hear when your agent needs you or is done, or **Act out what it's doing** to ignore it altogether. Antigravity reports less than the others: no permission prompts.
 
-### Usage
-
-Your plan's limits for Claude, Codex, Cursor and Antigravity: how much is used and when each resets. The menu bar shows the one Mochi follows; click it for all of them, with Claude's history over the last day or week. Prefer the notch? **Settings → General** moves it there: Mochi and its % flank the notch, hover to fan out every limit, hover the hub to switch provider.
-
-Mochi reads each plan straight from the provider, with the sign-in its CLI already has on your Mac, and falls back if that doesn't answer:
-
-| | First | Then | Last resort |
-|---|---|---|---|
-| Claude | Anthropic's usage API (Claude Code's sign-in, from the keychain) | Claude Code's status line, after every message, once connected | the `/usage` screen of `claude` |
-| Codex | ChatGPT's usage API (`~/.codex/auth.json`) | Codex's own session logs | the `/status` screen of `codex` |
-| Cursor | Cursor's usage API (cursor-agent's sign-in, or the editor's) | | the `/usage` screen of `cursor-agent` |
-| Antigravity | Google Cloud Code's quota API (`agy`'s sign-in, from the keychain) | | the `/usage` screen of `agy` |
-
-Every provider refreshes on its own, so a slow one never holds up the rest: the APIs every 2 minutes (Claude's every 5, and it backs off when Anthropic says to slow down), a CLI screen at most every 15. The last numbers you saw show straight away at launch and stay up, marked stale, if a check fails. Mochi never refreshes or stores a sign-in itself: an expired one waits for its CLI to renew it the next time you use it (for `agy`, Mochi runs `agy models`, which renews it and uses none of your plan). Reading a CLI's screen is a local command; it doesn't send a prompt or use any of your plan. Antigravity needs `agy`'s first-run setup finished once in a terminal before its usage can be read.
-
 It also cheers you on every 20–35 minutes, throws confetti on each hour you've worked, and gets heart eyes when you hover over it.
 
 **Emoji** are off by default: Mochi's speech bubble uses little pixel icons instead. Turn on **Use Emoji** if you'd rather have them.
 
-**Privacy:** Mochi reads macOS idle timers (seconds since the last key press or mouse move), the ID of the app in front (like `com.microsoft.VSCode`), where windows are on screen (positions only: no titles or contents), whether the camera, mic or speakers are in use (an on/off flag, never the audio or video), the battery level, and dark mode. It never sees what you type or what's in your windows. No permissions are needed and nothing leaves your Mac. Turn off **React to Apps & Calls** to stop it looking at apps, calls and music. State lives in `~/Library/Application Support/Mochi/state.json`.
+**Privacy:** with the pet on, Mochi reads macOS idle timers (seconds since the last key press or mouse move), the ID of the app in front (like `com.microsoft.VSCode`), where windows are on screen (positions only: no titles or contents), whether the camera, mic or speakers are in use (an on/off flag, never the audio or video), the battery level, and dark mode. It never sees what you type or what's in your windows. No permissions are needed and nothing leaves your Mac. Turn off **React to Apps & Calls** to stop it looking at apps, calls and music. State lives in `~/Library/Application Support/Mochi/state.json`.
 
 **Your agents:** connecting Claude Code adds a hook script and a status line script (both in `~/Library/Application Support/Mochi/`) to `~/.claude/settings.json`, after backing it up to `settings.json.mochi-backup`. Your other settings, hooks and key order are kept, and a status line you already had keeps showing: Mochi's passes it through. Codex, Cursor and Antigravity get one small script (`hooks/mochi-hook.sh`) in their own config folder (`~/.codex`, `~/.cursor`, `~/.gemini/antigravity-cli`), added to their hooks file the same careful way. Codex runs new hooks only after you approve them with `/hooks`. The hooks run in the background, so they never slow anything down, and send each event (which tool, its file or command, the project folder) to Mochi over `127.0.0.1:47833`; nothing leaves your Mac. **Disconnect** takes it all back out.
 
-## Using it
+## Settings
 
-- **Drag** Mochi anywhere and let go (or throw it). **Click** to boop it.
-- **Right-click Mochi** for its panel: a big speech bubble over its head, while Mochi holds up a gear. Right-click again, click anywhere else or press Escape to close it. It has five tabs:
-  - **Usage**: how much of your plan you've used and when each limit resets, for the agent Mochi follows, and its sessions (click one to jump to it and clear its alert). Connect it from here too.
-  - **Today**: time at the computer, how long you've been sitting, water, coffee, energy drinks and breaks, and buttons to log them.
-  - **Play**: cheer me on, how am I doing, play ball, water the plant, **Sit on My Window**, **Go Explore**.
-  - **Dress up**: Mochi in every costume, live; click one and it wears it for a little while, click it again to take it off.
-  - **Settings** (the gear): the agent Mochi follows (Claude, Codex, Antigravity or Cursor), size, roaming (off keeps it exactly where you put it, no gravity), reacting to apps and calls, emoji, open at login; a switch for each reminder (water, walks, stretches, lunch, coffee, bedtime, cheering) and the quiet hour; your agent, including whether the Usage tab lists its sessions. **All settings** opens the Settings window.
-- **Click the menu bar icon** for every provider's usage. **Settings** has everything: General (menu bar or notch, open at login), Mochi, Usage (providers, sign in), Agents (connect each CLI), Alerts (sounds, repeats, notifications) and About.
+General (menu bar or notch, open at login, setup), Usage (each provider's status, sign in or install, turn one off), Agents (connect each CLI, its alerts), Alerts (sounds, repeats, notifications), Mochi (the pet: on or off, Claude or Codex, size, roaming, reminders, costumes) and About.
 
 ## Building
 
@@ -133,7 +132,7 @@ It also cheers you on every 20–35 minutes, throws confetti on each hour you've
 swift test           # MochiCore's tests: usage sources, hooks, sessions
 ```
 
-Needs Xcode's Swift toolchain. Mochi is a Swift package: `MochiCore` (usage sources, agent hooks and sessions, settings; no AppKit, so it's tested headlessly), `ptydrive` (drives a CLI in a terminal, the last-resort usage source) and the `Mochi` app. The pages it shows live in `web/`. `web/preview.html` shows every pose in a browser (they follow your cursor).
+Needs Xcode's Swift toolchain. Mochi is a Swift package: `MochiCore` (usage sources, agent hooks and sessions, settings; no AppKit, so it's tested headlessly), `ptydrive` (drives a CLI in a terminal, the last-resort usage source) and the `Mochi` app, whose windows are SwiftUI. The pet's page and the providers' logos live in `web/`. `web/preview.html` shows every pose in a browser (they follow your cursor).
 
 To test reminders quickly: `MOCHI_SPEED=60 ~/Applications/Mochi.app/Contents/MacOS/Mochi` makes the reminder timers 60× faster. `MOCHI_ROAM=2` makes it explore as if you'd stepped away (`1` for the occasional stroll) and logs every move to the terminal. `MOCHI_TRACE=1` logs every pose and line.
 
@@ -143,21 +142,19 @@ To try the agent poses without an agent, post a hook event yourself (`/hook` is 
 curl -H 'X-Mochi: 1' --data '{"hook_event_name":"PreToolUse","session_id":"t","tool_name":"Edit","tool_input":{"file_path":"App.tsx"}}' http://127.0.0.1:47833/hook
 ```
 
-After changing Mochi in `web/pet.js`, regenerate the menu bar's copy: `node scripts/tray-sprites.js > Sources/Mochi/Tray/TraySprites.swift` (CI checks it).
-
 Re-render the PNGs in `renders/`: `Mochi.app/Contents/MacOS/Mochi --render <folder>` (run it from a copy outside `~/Documents`).
 
 ## Files
 
-- `Sources/Mochi/main.swift`: the pet: transparent always-on-top window, how Mochi gets around (screens and window tops become ledges; walking, hopping, falling, riding, being thrown), sensors (idle, sleep/wake, app in front, camera/mic, battery), its panel's actions, saving.
+- `Sources/Mochi/main.swift`: the pet: transparent always-on-top window, how Mochi gets around (screens and window tops become ledges; walking, hopping, falling, riding, being thrown), sensors (idle, sleep/wake, app in front, camera/mic, battery), its settings, saving.
 - `Sources/Mochi/Agents.swift`: your agents: the local listener their hooks talk to, connecting each CLI, and the alerts that wait for you (`AlertCenter.swift`).
-- `Sources/Mochi/UsageShell.swift`: where usage shows (the menu bar icon and dropdown in `Tray/`, or the notch in `Notch/`) and the Settings and setup windows (`Settings/`, `Wizard/`).
+- `Sources/Mochi/UsageShell.swift`: where usage shows (the menu bar icon and dropdown in `Tray/`, or the notch in `Notch/`) and the Settings and setup windows (`Settings/`, `Wizard/`). `UsageDisplay.swift` is what each provider's numbers mean on screen, shared by all of them.
 - `Sources/MochiCore/`: usage sources and `UsageService`, the hook payloads of every CLI (`AgentEvent.swift`) and what they add up to (`AgentSessions.swift`), installing hooks, settings.
 - `web/pet.js`: Mochi. Every pose and prop is drawn as pixel strings on a 46×34 canvas. `web/looks.js` gives each provider its name and colour.
+- `web/logos/`: each provider's logo (Gemini's as a PNG too: macOS leaves out its SVG's blurs).
 - `web/brain.js`: decides what Mochi does and says, and how much it may roam right now (it stays put while you type).
 - `web/icons.js`: pixel icons that stand in for emoji in the speech bubble.
-- `web/pet.css`, `web/ui.css`: the pixel speech bubble and the panel look every page shares. Font: Jersey 15 (OFL, `web/fonts/OFL.txt`).
-- `web/panel.*` (Mochi's panel), `web/menu.*` (the usage dropdown), `web/settings.*`, `web/wizard.*`: the pages. Open one in a browser to work on it with sample data (`panel.html?tab=closet&provider=codex` and so on).
+- `web/pet.css`: Mochi's pixel speech bubble. Font: Jersey 15 (OFL, `web/fonts/OFL.txt`).
 
 ## Licenses
 

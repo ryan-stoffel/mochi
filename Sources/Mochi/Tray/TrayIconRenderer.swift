@@ -1,45 +1,43 @@
 import AppKit
 import MochiCore
 
-/// Draws the menu bar icon: Mochi as a pixel silhouette, with the selected provider's usage beside it in the
-/// menu bar's own font. A template image, so macOS tints it like every other icon up there, light bar or dark.
+/// Draws the menu bar icon: the selected provider's logo with its usage beside it in the menu bar's own font. A
+/// template image, so macOS tints it like every other icon up there, light bar or dark.
 enum TrayIconRenderer {
 
-    enum Mood { case fine, busy, error }
-
-    /// The critter stands at most about this tall, in whole device pixels; short critters get chunkier pixels.
-    private static let critterHeight: CGFloat = 18
+    private static let logoSize: CGFloat = 15
 
     /// `pct` nil shows "–" while there's nothing to show yet, or "!" when the provider is failing.
-    static func icon(pct: Int?, mood: Mood) -> NSImage {
-        let rows = TraySprites.mochi.template
-        let cols = rows.first?.count ?? 0
-        // Whole device pixels on a 2x screen (1, 1.5, 2...), and never under 1pt so tall critters stay legible.
-        let px = max(1, (critterHeight * 2 / CGFloat(max(rows.count, 1))).rounded(.down) / 2)
-        let critter = NSSize(width: CGFloat(cols) * px, height: CGFloat(rows.count) * px)
-
-        let label = pct.map { "\($0)%" } ?? (mood == .error ? "!" : "–")
+    static func icon(provider: String, pct: Int?, failing: Bool) -> NSImage {
+        let label = pct.map { "\($0)%" } ?? (failing ? "!" : "–")
         let font = menuBarFont
         let text = NSAttributedString(string: label, attributes: [.font: font, .foregroundColor: NSColor.black])
-        let gap: CGFloat = 4
+        let gap: CGFloat = 5
         let height = NSStatusBar.system.thickness
-        let size = NSSize(width: (critter.width + gap + text.size().width).rounded(.up), height: height)
+        let size = NSSize(width: (logoSize + gap + text.size().width).rounded(.up), height: height)
+        let logo = Logo.image(provider, template: true)
 
         let image = NSImage(size: size, flipped: false) { _ in
-            NSColor.black.setFill()
-            let bottom = ((height - critter.height) / 2 * 2).rounded() / 2
-            for (j, row) in rows.enumerated() {
-                for (i, ch) in row.enumerated() where ch == "#" {
-                    NSRect(x: CGFloat(i) * px, y: bottom + CGFloat(rows.count - 1 - j) * px, width: px, height: px).fill()
-                }
+            let s = logoSize * Logo.scale(provider)
+            let box = NSRect(x: (logoSize - s) / 2, y: ((height - s) / 2 * 2).rounded() / 2, width: s, height: s)
+            if let logo {
+                // the shape alone: a template's colour is ignored, only its coverage counts
+                logo.draw(in: aspectFit(logo.size, in: box), from: .zero, operation: .sourceOver, fraction: 1)
             }
             // Centre the digits' cap height on the bar, like the clock and the battery percentage.
             let baseline = ((height - font.capHeight) / 2 * 2).rounded() / 2
-            text.draw(at: NSPoint(x: critter.width + gap, y: baseline + font.descender))
+            text.draw(at: NSPoint(x: logoSize + gap, y: baseline + font.descender))
             return true
         }
         image.isTemplate = true
         return image
+    }
+
+    private static func aspectFit(_ size: NSSize, in box: NSRect) -> NSRect {
+        guard size.width > 0, size.height > 0 else { return box }
+        let k = min(box.width / size.width, box.height / size.height)
+        let w = size.width * k, h = size.height * k
+        return NSRect(x: box.midX - w / 2, y: box.midY - h / 2, width: w, height: h)
     }
 
     /// The menu bar's font with digits that don't jiggle as the number changes.
@@ -51,13 +49,4 @@ enum TrayIconRenderer {
         ]]])
         return NSFont(descriptor: descriptor, size: base.pointSize) ?? base
     }()
-}
-
-extension NSColor {
-    convenience init(hex: String) {
-        var v: UInt64 = 0
-        Scanner(string: hex.hasPrefix("#") ? String(hex.dropFirst()) : hex).scanHexInt64(&v)
-        self.init(srgbRed: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255,
-                  blue: CGFloat(v & 0xFF) / 255, alpha: 1)
-    }
 }

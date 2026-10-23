@@ -19,22 +19,22 @@ final class UsageShell: NSObject {
         self.pet = pet
     }
 
-    /// The usage dropdown, shared: the menu bar icon opens it, and so does right-clicking the notch.
+    /// The usage dropdown the menu bar icon opens.
     private lazy var menu = UsageMenu(usage: usage, onOpenSettings: { [weak self] in self?.openSettings() })
 
     private lazy var statusItem = StatusItemController(usage: usage, menu: menu)
 
     private lazy var panel = NotchController(usage: usage)
 
-    private lazy var settings = SettingsPage(
+    /// What Settings and setup both read and change.
+    private lazy var model = SettingsModel(
         usage: usage, agents: agents, pet: pet,
         onDisplayModeChange: { [weak self] mode in self?.apply(mode: mode) },
         onRunWizard: { [weak self] in self?.openWizard() })
 
-    private lazy var wizard = WizardPage(
-        usage: usage,
-        onDisplayModeChange: { [weak self] mode in self?.apply(mode: mode) },
-        onFinish: {})
+    private lazy var settings = SettingsPage(model: model)
+
+    private lazy var wizard = WizardPage(model: model)
 
     private var currentMode: DisplayMode?
 
@@ -45,9 +45,6 @@ final class UsageShell: NSObject {
         NotificationCenter.default.addObserver(
             self, selector: #selector(openWizard),
             name: .openWizardRequested, object: nil)
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(openMenuUnderNotch),
-            name: .usageMenuRequested, object: nil)
 
         apply(mode: resolvedMode())
 
@@ -90,22 +87,9 @@ final class UsageShell: NSObject {
         }
     }
 
-    /// Mochi follows another provider now: so does the menu bar.
-    func providerChanged() {
-        Settings.shared.selectedProvider = agents.config.provider
-        usage.objectWillChange.send()
-    }
-
     // MARK: - Windows
 
     @objc func openSettings() { settings.show() }
 
     @objc func openWizard() { wizard.show() }
-
-    /// Notch mode has no menu bar icon, so right-clicking the notch opens the dropdown hanging from it instead.
-    @objc func openMenuUnderNotch() {
-        let screen = NotchGeometry.notchScreen
-        let feet = screen.frame.maxY - NotchGeometry.info(for: screen).reservedTopHeight
-        menu.show(x: screen.frame.midX, top: screen.frame.maxY, feet: feet - 2)
-    }
 }

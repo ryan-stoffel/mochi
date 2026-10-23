@@ -6,7 +6,7 @@ import SwiftUI
 ///
 /// It is always the full open size (`NotchGeometry.expandedSize`) and never resizes: a window resizing under the
 /// pointer is what made the old hover tracking see the pointer leave and come back, which closed the notch as it
-/// opened. Instead it lets clicks straight through everywhere except the pill (and, while open, the fan), so its
+/// opened. Instead it lets clicks straight through everywhere except the pill (and, while open, the island), so its
 /// transparent area never blocks the desktop or the menu bar.
 ///
 /// Whether it's open comes from one place, `NotchHover`, fed the pointer position 30 times a second. Nothing else
@@ -16,12 +16,10 @@ import SwiftUI
 /// would draw the pill underneath the real menu bar instead of flush with the notch.
 final class NotchPanel: NSPanel {}
 
-/// What the views show: open or not, and whether the provider ring is out. `NotchController` sets it from
-/// `NotchHover`; nothing else should.
+/// What the views show: open or not. `NotchController` sets it from `NotchHover`; nothing else should.
 @MainActor
 final class NotchState: ObservableObject {
     @Published var open = false
-    @Published var ring = false
 }
 
 @MainActor
@@ -98,20 +96,18 @@ final class NotchController: NSObject {
         let size = NotchGeometry.expandedSize(for: screen)
         let origin = NotchGeometry.topCenterOrigin(for: size, on: screen)
         panel.setFrame(NSRect(origin: origin, size: size), display: true)
-        let bar = NotchGeometry.compactSize(for: screen)
-        let g = RingGeometry.self
+        let bar = NotchGeometry.compactSize(for: screen), island = NotchGeometry.islandSize(for: screen)
         layout = NotchHover.Layout(
             bar: CGRect(x: (size.width - bar.width) / 2, y: 0, width: bar.width, height: bar.height),
-            hub: CGPoint(x: size.width / 2, y: bar.height),
-            hubRadius: g.providerROuter, ringRadius: g.providerROuter, fanRadius: g.infoROuter + 4)
+            island: CGRect(x: (size.width - island.width) / 2, y: 0, width: island.width, height: island.height))
     }
 
     private func track() {
         guard let panel, let layout else { return }
         let m = NSEvent.mouseLocation, f = panel.frame
         let p = CGPoint(x: m.x - f.minX, y: f.maxY - m.y)
-        let spot = NotchHover.spot(of: p, in: layout, open: hover.open, ring: hover.ring)
-        hover.update(spot, at: CACurrentMediaTime(), point: p)
+        let spot = NotchHover.spot(of: p, in: layout, open: hover.open)
+        hover.update(spot, at: CACurrentMediaTime())
         apply()
         // Take clicks only over what's showing; everywhere else they go to whatever is underneath.
         let live = hover.open ? spot != .away : spot == .bar
@@ -126,7 +122,6 @@ final class NotchController: NSObject {
 
     private func apply() {
         if state.open != hover.open { state.open = hover.open }
-        if state.ring != hover.ring { state.ring = hover.ring }
     }
 }
 

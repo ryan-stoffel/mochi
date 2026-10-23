@@ -496,7 +496,6 @@
     else if (t < R.landUntil) p = 'land';
     else if (t < R.dizzyUntil) p = 'dizzy';
     else if (R.scene) return;
-    else if (R.menu) p = 'tinker';                           // its panel is open
     else if (R.sys.call) p = 'shh';
     else if (cp) p = cp;                                     // acting out what Claude Code is doing
     else if (s.idle >= CFG.sleepIdle) p = isNight(t) ? 'nightSleep' : 'nap';
@@ -793,13 +792,6 @@
       if (ok) say('cheer', `connected! restart your ${name} sessions and i'll follow along :sparkle:`, 8, 'sparkle');
       else say('sweaty', `couldn't connect to ${name}: ${why}`, 8);
     },
-    // the panel opened or closed: hold up a gear while it's open, and keep the bubble out of its way
-    menu(open) {
-      R.menu = !!open;
-      document.body.classList.toggle('menu', R.menu);
-      R.ambient = '';
-      ambient(Date.now(), R.last || IDLE);
-    },
     setToggle(key, on) {
       toggles[key] = !!on;
       R.now = Date.now();
@@ -839,12 +831,12 @@
     if (native) post({ type: 'dragStart' });
   });
   petEl.addEventListener('click', () => { if (!native) poke(); });
-  petEl.addEventListener('contextmenu', (e) => { e.preventDefault(); post({ type: 'menu' }); });
+  petEl.addEventListener('contextmenu', (e) => e.preventDefault());   // right-clicking Mochi does nothing
 
   // Clickable areas, so the rest of the window lets clicks through to whatever is behind it.
   function hotRects() {
     const out = [view.hitBox()];
-    if (!bubbleEl.hidden && !R.menu) { const b = bubbleEl.getBoundingClientRect(); out.push([b.left - 4, b.top - 4, b.width + 8, b.height + 14]); }
+    if (!bubbleEl.hidden) { const b = bubbleEl.getBoundingClientRect(); out.push([b.left - 4, b.top - 4, b.width + 8, b.height + 14]); }
     return out.map((a) => a.map(Math.round));
   }
   setInterval(() => { const h = JSON.stringify(hotRects()); if (h !== R.hotStr) { R.hotStr = h; post({ type: 'hot', rects: JSON.parse(h) }); } }, 150);

@@ -4,7 +4,7 @@ import MochiCore
 
 /// Owns the menu-bar status item — the tray shell.
 ///
-/// The icon is the selected provider's critter with its usage beside it (`TrayIconRenderer`), monochrome like the
+/// The icon is the selected provider's logo with its usage beside it (`TrayIconRenderer`), monochrome like the
 /// rest of the menu bar. Clicking it opens the `UsageMenu` dropdown hanging from the bar. One of the two shells
 /// `UsageShell` switches between; it holds no data of its own and observes the shared `UsageService`.
 @MainActor
@@ -44,15 +44,11 @@ final class StatusItemController {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in
                 // objectWillChange fires before the new values land; read them on the next turn.
-                DispatchQueue.main.async {
-                    self?.updateIcon()
-                    self?.menu.update()
-                }
+                DispatchQueue.main.async { self?.updateIcon() }
             }
             .store(in: &cancellables)
 
         menu.onSelect = { [weak self] in self?.updateIcon() }
-        menu.warm()
         updateIcon()
     }
 
@@ -71,13 +67,13 @@ final class StatusItemController {
         guard let button = statusItem?.button else { return }
         let provider = UsageMenu.selected
         let status = usage.status(provider.id)
-        let mood: TrayIconRenderer.Mood
-        if usage.isRefreshing { mood = .busy } else if case .error = status.state { mood = .error } else { mood = .fine }
+        var failing = false
+        if case .error = status.state { failing = true }
         let pct = usage.primaryPct(provider.id)
-        button.image = TrayIconRenderer.icon(pct: pct, mood: mood)
+        button.image = TrayIconRenderer.icon(provider: provider.id, pct: pct, failing: failing)
         let tip = tooltip(for: provider, status: status)
         button.toolTip = tip
-        button.setAccessibilityLabel(pct.map { "Mochi, \(provider.name) \($0) percent used" } ?? "Mochi")
+        button.setAccessibilityLabel(pct.map { "\(provider.name), \($0) percent used" } ?? "Mochi")
         button.setAccessibilityHelp(tip)
     }
 
@@ -111,7 +107,7 @@ final class StatusItemController {
     @objc private func open() {
         guard let button = statusItem?.button, let window = button.window else { return }
         let r = window.convertToScreen(button.convert(button.bounds, to: nil))
-        menu.show(x: r.midX, top: r.maxY, feet: r.minY - 2)
+        menu.toggle(at: CGPoint(x: r.midX, y: r.minY - 5))
     }
 }
 

@@ -55,10 +55,12 @@ enum NotchGeometry {
         return CGPoint(x: x, y: y)
     }
 
-    /// Fixed layout constants shared by the menu-bar chrome and the wedge fan.
+    /// Fixed layout constants shared by the pill and the island.
     enum Layout {
-        static let flankWidth: CGFloat = 64        // badge/percentage slot, each side of the notch
-        static let fanExtraWidth: CGFloat = 34     // widen beyond notch+flanks so the fan has room to spread
+        static let flankWidth: CGFloat = 64        // logo/percentage slot, each side of the notch
+        static let islandWidth: CGFloat = 420
+        static let islandContentHeight: CGFloat = 160   // below the bar
+        static let shadowMargin: CGFloat = 24
     }
 
     /// Panel size for the rest (flanking) state — just tall enough for the
@@ -68,19 +70,18 @@ enum NotchGeometry {
         return CGSize(width: i.notchWidth + Layout.flankWidth * 2, height: i.reservedTopHeight)
     }
 
-    /// The panel's one size: the bar plus the whole fan below it, so the window never resizes under the pointer.
-    /// It lets clicks through everywhere but the pill (or the open fan); see `NotchController`.
-    ///
-    /// Width is clamped to at least `RingGeometry.width` — the ring's own
-    /// layers are chained outward from the hub and can grow, so the panel has
-    /// to grow with them or the outermost wedges get hard-clipped.
-    static func expandedSize(for screen: NSScreen = notchScreen) -> CGSize {
+    /// The open island, bar included.
+    static func islandSize(for screen: NSScreen = notchScreen) -> CGSize {
         let i = info(for: screen)
-        let compact = compactSize(for: screen)
-        let fanWidth = i.notchWidth + Layout.fanExtraWidth * 2
-        let width = max(compact.width, fanWidth, RingGeometry.width)
-        let height = i.reservedTopHeight + RingGeometry.height
-        return CGSize(width: width, height: height)
+        return CGSize(width: max(Layout.islandWidth, compactSize(for: screen).width + 40),
+                      height: i.reservedTopHeight + Layout.islandContentHeight)
+    }
+
+    /// The panel's one size: the island plus room for its shadow, so the window never resizes under the pointer.
+    /// It lets clicks through everywhere but the pill (or the open island); see `NotchController`.
+    static func expandedSize(for screen: NSScreen = notchScreen) -> CGSize {
+        let island = islandSize(for: screen)
+        return CGSize(width: island.width + Layout.shadowMargin * 2, height: island.height + Layout.shadowMargin)
     }
 
     /// The real hardware notch's rect in the *panel's local* coordinate

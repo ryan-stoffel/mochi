@@ -13,9 +13,6 @@ extension Notification.Name {
     /// Posted when a view wants the setup wizard shown.
     static let openWizardRequested = Notification.Name("com.joey.mochi.openWizard")
 
-    /// Posted when the notch is right-clicked: the usage dropdown opens under it.
-    static let usageMenuRequested = Notification.Name("com.joey.mochi.usageMenu")
-
-    // `panelShouldCollapse` is declared by PanelController, which owns the
+    // `panelShouldCollapse` is declared by NotchController, which owns the
     // behaviour it drives — left there rather than hoisted here.
 }

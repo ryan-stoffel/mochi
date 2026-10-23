@@ -24,11 +24,8 @@ jobs:
       - name: Test
         run: swift test
 
-      - name: Check the pages parse
-        run: for f in web/*.js scripts/*.js; do node --check "$f"; done
-
-      - name: Check the menu bar sprites match the pets
-        run: node scripts/tray-sprites.js | diff - Sources/Mochi/Tray/TraySprites.swift
+      - name: Check the pet's scripts parse
+        run: for f in web/*.js; do node --check "$f"; done
 
       - name: Build app bundle
         run: ./build.sh
