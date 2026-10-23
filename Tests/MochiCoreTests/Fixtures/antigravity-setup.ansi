@@ -1,0 +1,66 @@
+[?2026$p[?2027$p]11;?]7501;?[?25l[?5W[?2004h[>4;2m[>1u[?u[J
+[5C▄▀▀▄
+[5D▀▀▀▀▀▀
+[7D▀▀▀▀▀▀▀▀
+  ▄▀▀    ▀▀▄
+ ▄▀▀      ▀▀▄
+
+ Welcome to the Antigravity CLI. You are currently not signed in.
+
+ ⣷  Signing in... ⣯  ⣟  ⡿  ⢿  ⣻  ⣽  ⣾  ⣷  ⣯  ⣟  ⡿  ⢿  ⣻  ⣽  ⣾  ⣷  ⣯  ⣟  ⡿  ⢿  ⣻  ⣽ ]11;?[8A    ▄▀▀▄[K
+   ▀▀▀▀▀▀[K
+  ▀▀▀▀▀▀▀▀[K
+ ▄▀▀    ▀▀▄[K
+▄▀▀      ▀▀▄[K
+
+Welcome to Antigravity CLI![K
+
+Choose your color scheme:        ╭─────────────────────────────────────────────────────────────╮
+[63D│ > you: add a greeting function                              │
+  > terminal                     │                                                             │
+[92Dlight                        │   Here's the change:                                        │
+[92Dsolarized light              │                                                             │
+[92Dcolorblind-friendly light    │   3     import "fmt"                                        │
+[92Ddark                         │   4                                                         │
+[92Dsolarized dark               │   5  -  func main() {                                       │
+[92Dcolorblind-friendly dark     │   5  +  func greet(name string) {                           │
+[92Dtokyo night                  │   6  +      fmt.Printf("Hello, %s!\n", name)                │
+[63D│   7     }                                                   │
+[63D│                                                             │
+[63D│   ▾ Thought Process                                         │
+[63D│     I need to add a greeting function. I'll use fmt.Printf. │
+[63D│   ⚙ tool: write_file main.go                                │
+[63D│   ◉ task: Implementing greeting                             │
+[63D│   ✗ error: compilation failed                               │
+[63D│   ⚠ warning: deprecation warning                            │
+[63D│   → link: file:///path/to/main.go                           │
+[63D│   ★ accent: highlighted text                                │
+[63D│   · dim: press Enter to continue                            │
+[63D╰─────────────────────────────────────────────────────────────╯
+
+[92D[Next]
+
+  ↑/↓ Navigate · enter Confirm
+[147CGemini 3.8 Flash · high[5A[J[23ATerms of Service & Data Use
+
+AI coding agents are known to have certain security risks, including autonomous code execution, data exfiltration, prompt injection and supply chain risks. Ensure that you monitor and verify all
+actions taken by the agent.[K
+[K
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+[K
+  > [x] Yes, I agree to help improve Antigravity CLI by allowing[K
+[60D  Google to collect and use my Interactions data,[K
+[49D  subject to the Google Antigravity CLI Terms of Service[K
+[56D  and Google Privacy Policy. I understand I can[K
+[47D  choose to opt out later whenever I want via my[K
+[46Dsettings.[K
+[K
+[6CLinks:[K
+[6D- Terms of Service: https://antigravity.google/terms[K
+[52D- Privacy Policy: https://policies.google.com/privacy[K
+[K
+[4C[Previous]      [Done][K
+[K
+[K
+  ↑/↓ Navigate · enter Toggle[K
+[147C[1K Gemini 3.8 Flash · high[15A[5C ]x] ]x] ]x] ]x] ]x] ]x] ]x] ]x] ]x] ]x] ]x] ]x] ]
