@@ -71,6 +71,7 @@ struct UsageMenuView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
+            .focusable(false)
             .help("Check now")
         }
     }
@@ -126,6 +127,7 @@ private struct ProviderTabs: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .focusable(false)
                 .help(p.name)
                 .accessibilityLabel(p.name)
             }
@@ -225,6 +227,7 @@ private struct DisclosureButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .focusable(false)
     }
 }
 
@@ -332,6 +335,7 @@ private struct MenuRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .focusable(false)
         .keyboardShortcut(KeyEquivalent(shortcut), modifiers: .command)
         .onHover { hover = $0 }
     }
