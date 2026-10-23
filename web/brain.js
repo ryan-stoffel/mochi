@@ -13,22 +13,9 @@
   const petEl = document.getElementById('pet');
   const bubbleEl = document.getElementById('bubble');
   const wrapEl = document.getElementById('bubbleWrap');
-  // Mochi is dressed as the provider you picked (looks.js): Claude's Mochi, Codex's pet, Gemini's or Cursor's critter.
+  // the provider you picked (looks.js): the agent Mochi follows, named in what it says
   let provider = params.get('provider') || ENV.provider || 'claude';
-  const look = () => MINI_LOOKS[provider] || MINI_LOOKS.claude;
-  let view = new Critter(petEl, { scale: +(params.get('scale') || ENV.scale || 6), species: look().species, palette: look().palette });
-  // Swaps the critter for another provider's, keeping its size, pose and the way it faces.
-  function dress(id) {
-    if (!MINI_LOOKS[id] || id === provider) return;
-    provider = id;
-    const was = { scale: view.scale, pose: view.current, facing: view.facing };
-    view.destroy();
-    view = new Critter(petEl, { scale: was.scale, species: look().species, palette: look().palette, pose: was.pose || 'idle' });
-    view.facing = was.facing;
-    applyLayout();
-    placeBubble();
-    view.burst('sparkle', 8);
-  }
+  const view = new Critter(petEl, { scale: +(params.get('scale') || ENV.scale || 6) });
 
   // the window: Mochi at the bottom (above a strip kept free for a bubble below it), a bubble above
   const layout = { w: ENV.w || 320, h: ENV.h || 360, below: ENV.below || 0 };
@@ -38,9 +25,8 @@
     st.setProperty('--h', layout.h + 'px');
     st.setProperty('--pet-left', (layout.w - 46 * k) / 2 + 'px');
     st.setProperty('--pet-bottom', layout.below + 'px');
-    // just over the head, whatever species: the top of its head, plus room for a sign over it ("!" or a check mark)
-    const head = Critter.headRow ? Critter.headRow(look().species) : 20;
-    st.setProperty('--bubble-above', layout.below + (34 - head + 9) * k + 4 + 'px');
+    // just over the head (row 20 of 34), plus room for a sign over it ("!" or a check mark)
+    st.setProperty('--bubble-above', layout.below + 23 * k + 4 + 'px');
     st.setProperty('--bubble-below', layout.h - layout.below + 10 + 'px');
   }
   applyLayout();
@@ -419,7 +405,7 @@
     }
   }
 
-  // ---------- your agents: what the one Mochi is dressed as is up to (Agents.swift hears it from the CLIs' hooks) ----------
+  // ---------- your agents: what the agent you picked is up to (Agents.swift hears it from the CLIs' hooks) ----------
   const CLAUDE_POSES = {
     waiting: 'needsYou', error: 'oops', compacting: 'squish', agents: 'conduct', reading: 'read', writing: 'type',
     searchCode: 'detective', searchWeb: 'binoculars', command: 'terminal', testing: 'clipboard', server: 'terminal',
@@ -785,7 +771,7 @@
     },
     sys: onSys,
     agent: onClaude,
-    setProvider: dress,
+    setProvider(id) { if (MINI_LOOKS[id]) provider = id; },
     setFollow(on, narrate) {
       C.on = !!on;
       C.narrate = !!narrate;
@@ -794,7 +780,7 @@
       ambient(Date.now(), R.last || IDLE);
       updateRoam();
     },
-    // first run with the agent Mochi is dressed as around: offer to follow along
+    // first run with the agent you picked around: offer to follow along
     connectHint() {
       R.now = Date.now();
       const name = (MINI_LOOKS[provider] || {}).name || 'your agent';

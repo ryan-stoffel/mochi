@@ -90,7 +90,7 @@ final class UsageShell: NSObject {
         }
     }
 
-    /// Mochi was dressed as another provider: the menu bar follows it.
+    /// Mochi follows another provider now: so does the menu bar.
     func providerChanged() {
         Settings.shared.selectedProvider = agents.config.provider
         usage.objectWillChange.send()

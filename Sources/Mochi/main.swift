@@ -1,5 +1,5 @@
 // Mochi: a pixel critter that lives on your desktop, keeps you company, follows your coding agents and keeps an eye
-// on your AI plans. It's dressed as the provider you pick: Claude's Mochi, Codex's pet, Gemini's or Cursor's.
+// on your AI plans. It follows the provider you pick: Claude, Codex, Antigravity or Cursor.
 // The window is a transparent, always-on-top panel hosting web/index.html. This file does the Mac parts:
 // sensors (idle timers, sleep/wake, which app you're in, calls, battery), the window and how it gets around
 // your screens (walking, hopping between windows, falling, being thrown), the panel's actions, and saving state.
@@ -207,7 +207,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
     lazy var agents = Agents(dataDir: dataDir)
     lazy var shell = UsageShell(agents: agents, pet: self)
     var usage: UsageService { shell.usage }
-    /// Which provider Mochi is dressed as, and follows.
+    /// Which provider Mochi follows.
     var provider: String { agents.config.provider }
     var lastAgent = ""
     var agentState = ""
@@ -297,7 +297,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         pushSys()
         sendRoom()
         pushAgent()
-        // the provider Mochi is dressed as is on this Mac but not connected yet: offer once
+        // the provider Mochi follows is on this Mac but not connected yet: offer once
         if agents.canInstall(provider) && agents.installed[provider] != true && !defaults.bool(forKey: "offered-\(provider)") {
             defaults.set(true, forKey: "offered-\(provider)")
             DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in self?.js("mochi.connectHint()") }
@@ -432,7 +432,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         agentState = state
     }
 
-    /// Connects (or disconnects) the CLI of the provider Mochi is dressed as.
+    /// Connects (or disconnects) the CLI of the provider Mochi follows.
     @objc func connectAgent() {
         let on = agents.installed[provider] != true
         do {

@@ -33,7 +33,7 @@ struct MenuBarChromeView: View {
                 .position(x: barCenterX, y: barHeight / 2)
                 .opacity(isExpanded && info.hasNotch ? 0 : 1)
 
-            PixelCritter(provider: provider.id, height: 17, busy: usage.isRefreshing)
+            PixelCritter(height: 17, busy: usage.isRefreshing)
                 .position(x: isExpanded ? notchRect.midX : barCenterX - flankOffset, y: barHeight / 2)
                 .scaleEffect(isExpanded ? 0.3 : 1)
                 .opacity(isExpanded ? 0 : 1)

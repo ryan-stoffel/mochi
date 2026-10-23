@@ -31,22 +31,12 @@
   .set .who { display: flex; align-items: center; gap: 9px; min-width: 0; }
   .set.off .who { opacity: 0.55; }
   .set.disabled { opacity: 0.5; pointer-events: none; }
-  /* a tiny live critter beside each provider, cropped to the critter itself */
-  .face { position: relative; flex: none; width: 28px; height: 28px; overflow: hidden; }
-  .face canvas { position: absolute; left: -9px; top: -6px; }
   .note { margin: 8px 2px 0; font-size: 14px; line-height: 1.1; color: #b57d14; }
   .note.error { color: var(--red); }
   .sound { display: flex; align-items: center; gap: 4px; }
   .sound .name { width: 70px; text-align: center; font-size: 15px; }
   .card .pxb.tiny { padding: 1px 6px 2px; font-size: 15px; }
   .seg button:disabled { color: var(--muted); cursor: default; }
-
-  /* your mochi: the four critters, live, picked like a closet */
-  .closet { gap: 8px; }
-  .closet button { padding: 4px 0 6px; background: #fdf5ec; box-shadow: 0 0 0 2px var(--line); }
-  .closet .stage { width: 100%; height: 56px; }
-  .closet .stage .critter { margin-bottom: -6px; }
-  .closet span { font-size: 15px; }
 
   /* where usage shows: two tiles with a little drawing of each */
   .where { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

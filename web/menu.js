@@ -20,7 +20,7 @@
   }
   const icon = (el, name) => { MochiIcons.render(el, `:${name}:`, false); return el; };
 
-  let S = {}, drawn = '', details = false, face = null, faceFor = '';
+  let S = {}, drawn = '', details = false, face = null;
   const look = (id) => MINI_LOOKS[id] || MINI_LOOKS.claude;
   // past 70% a meter turns amber, past 90% red, whichever provider it is
   const tier = (pct) => pct >= 90 ? 'var(--red)' : pct >= 70 ? '#e0a43b' : 'var(--orange)';
@@ -81,12 +81,8 @@
     drawn = key;
     const L = look(S.provider);
     $('card').style.setProperty('--accent', L.accent);
-    // the provider's own mini, live, so the dropdown and the mini read as one app
-    if (faceFor !== S.provider) {
-      faceFor = S.provider;
-      if (face) face.destroy();
-      face = new Critter($('face'), { pose: 'idle', scale: 1.5, species: L.species, palette: L.palette, particles: false });
-    }
+    // Mochi, live, so the dropdown and the pet read as one app
+    if (!face) face = new Critter($('face'), { pose: 'idle', scale: 1.5, particles: false });
     $('name').textContent = (L.name || '').toLowerCase();
     $('mood').textContent = S.mood || '';
     $('mood').classList.toggle('stale', !!S.stale);

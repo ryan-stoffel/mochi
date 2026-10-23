@@ -15,7 +15,7 @@ import Foundation
 public struct Provider: Identifiable, Equatable, Sendable {
     public let id: String
     public let name: String
-    /// Its colour across the app, as `RRGGBB`: the accent of its mini (looks.js), not the brand's own.
+    /// Its colour across the app, as `RRGGBB`: its accent in looks.js, not the brand's own.
     public let colorHex: String
     /// The binary `which` should look for.
     public let binary: String

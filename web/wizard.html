@@ -20,17 +20,13 @@
   /* critters on little stages, feet on the floor */
   .stage { display: flex; align-items: flex-end; justify-content: center; overflow: hidden; flex: none; }
   .stage .critter { margin-bottom: -6px; }
-  .row { display: flex; justify-content: space-between; margin: 6px 0 14px; }
-  .row .stage { width: 92px; height: 68px; }
-  .row .stage .critter { margin-bottom: -10px; }
   .floor { height: 2px; margin: -14px 4px 16px; background: var(--line); }
   .hero { display: flex; justify-content: center; }
   .hero .stage { width: 160px; height: 100px; }
   .hero .stage .critter { margin-bottom: -12px; }
 
-  /* one tool: its mini, what's going on, and the button that gets it working */
+  /* one tool: what's going on, and the button that gets it working */
   .det { min-height: 54px; justify-content: flex-start; gap: 10px; }
-  .det .stage { width: 46px; height: 36px; }
   .det .who { flex: 1; min-width: 0; line-height: 1.05; }
   .det .line { font-size: 15px; color: var(--muted); }
   .det .line.ok { color: #4fae68; }

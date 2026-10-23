@@ -37,24 +37,8 @@
   const pxb = (label, onclick, cls) => h('button', { class: 'pxb' + (cls ? ' ' + cls : ''), onclick }, label);
   const group = (...rows) => h('div', { class: 'group' }, rows);
 
-  // the critters are built once each, so they keep animating instead of restarting on every redraw
-  const faces = {};
-  function face(id) {
-    if (!faces[id]) {
-      const el = h('div', { class: 'face' });
-      const look = MINI_LOOKS[id] || {};
-      new Critter(el, { pose: 'idle', scale: 1, species: look.species, palette: look.palette, particles: false });
-      faces[id] = el;
-    }
-    return faces[id];
-  }
-  const picker = h('div', { class: 'closet' }, IDS.map((id) => {
-    const stage = h('div', { class: 'stage' });
-    const look = MINI_LOOKS[id];
-    new Critter(stage, { pose: 'idle', scale: 2, species: look.species, palette: look.palette });
-    return h('button', { 'data-id': id, title: look.name, onclick: () => act('pet', 'provider=' + id) }, stage, h('span', {}, look.name.toLowerCase()));
-  }));
-  let aboutStage = null, aboutFor = '';
+  // built once, so it keeps animating instead of restarting on every redraw
+  let aboutStage = null;
 
   // ---------- panes ----------
   const PANE = {
@@ -78,12 +62,11 @@
     mochi() {
       const p = S.pet;
       if (!p) return [h('h2', {}, 'your mochi'), h('div', { class: 'cap' }, "mochi's own settings show up here while it's running.")];
-      picker.querySelectorAll('button').forEach((b) => { b.classList.toggle('on', b.dataset.id === p.provider); b.setAttribute('aria-pressed', String(b.dataset.id === p.provider)); });
       const t = (key, label, line) => toggle(label, line, p[key] !== false, 'pet', key + '=' + (p[key] === false));
       return [
         h('h2', {}, 'your mochi'),
-        h('div', { class: 'cap' }, "it looks like the tool you pick and acts out that tool's sessions."),
-        picker,
+        h('div', { class: 'cap' }, "it acts out the sessions of the tool you pick, and shows that tool's plan."),
+        group(row('follows', '', seg(p.provider, 'pet', 'provider', IDS.map((id) => [MINI_LOOKS[id].name.toLowerCase(), id])))),
         h('h2', {}, 'on your screen'),
         group(
           toggle('show mochi', 'hidden, it comes back when you open the app.', p.visible !== false, 'pet', 'visible=' + (p.visible === false)),
@@ -110,7 +93,7 @@
         h('h2', {}, 'providers'),
         h('div', { class: 'cap' }, 'mochi reads your plan from each one. switching one off stops it checking that tool at all.'),
         group(S.providers.map((p) => h('div', { class: 'set' + (p.enabled ? '' : ' off') },
-          h('span', { class: 'who' }, face(p.id), title(p.name, p.status, p.tone)),
+          h('span', { class: 'who' }, title(p.name, p.status, p.tone)),
           h('span', { class: 'end' }, p.action && pxb(p.action, () => act('providerAction', p.id), 'primary'),
             sw(p.enabled, 'enable', p.id + '=' + !p.enabled, p.name))))),
       ];
@@ -125,7 +108,7 @@
         h('h2', {}, 'connected tools', h('span', { class: 'end' }, 'alerts')),
         h('div', { class: 'cap' }, 'a hook in each tool tells mochi what its sessions are doing. nothing leaves your mac.'),
         group(a.hooks.map((k) => h('div', { class: 'set' },
-          h('span', { class: 'who' }, face(k.id), title(k.name, hookLine(k), k.installed ? 'ok' : '')),
+          h('span', { class: 'who' }, title(k.name, hookLine(k), k.installed ? 'ok' : '')),
           h('span', { class: 'end' },
             k.installed && pxb('test', () => act('test', k.id)),
             (k.installed || k.canInstall) && pxb(k.installed ? 'disconnect' : 'connect', () => act('hook', k.id + '=' + !k.installed), k.installed ? '' : 'primary'),
@@ -169,12 +152,9 @@
     },
 
     about() {
-      const id = (S.pet && S.pet.provider) || 'claude';
-      if (!aboutStage || aboutFor !== id) {
-        aboutFor = id;
+      if (!aboutStage) {
         aboutStage = h('div', { class: 'stage' });
-        const look = MINI_LOOKS[id] || {};
-        new Critter(aboutStage, { pose: 'wave', scale: 3, species: look.species, palette: look.palette });
+        new Critter(aboutStage, { pose: 'wave', scale: 3 });
       }
       return [h('div', { class: 'about' },
         aboutStage,

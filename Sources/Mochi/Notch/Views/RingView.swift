@@ -455,12 +455,12 @@ struct RingView: View {
 
     @ViewBuilder private func iconView(_ icon: IconKind, height: CGFloat) -> some View {
         switch icon {
-        case .critter(let id): PixelCritter(provider: id, height: height)
+        case .critter: PixelCritter(height: height)
         case .pixel(let name): PixelIcon(name: name, height: height)
         }
     }
 
-    /// The active provider's critter on a paper disc. Click to refresh; it squints while a refresh runs.
+    /// Mochi on a paper disc. Click to refresh; it squints while a refresh runs.
     private var hub: some View {
         let scale = hubRadius / RingGeometry.hubRadius
         return Button(action: onSync) {
@@ -469,7 +469,7 @@ struct RingView: View {
                     .shadow(color: Theme.ink.opacity(0.16), radius: 0, x: 0, y: 3)
                     .overlay(Circle().stroke(Theme.ink, lineWidth: 2.5))
                 // the disc's top half is under the bar, so the critter sits in the visible bottom half
-                PixelCritter(provider: activeProvider.id, height: 18 * min(scale, 1.6), busy: usage.isRefreshing)
+                PixelCritter(height: 18 * min(scale, 1.6), busy: usage.isRefreshing)
                     .offset(y: hubRadius * 0.45)
             }
             .frame(width: hubRadius * 2, height: hubRadius * 2)

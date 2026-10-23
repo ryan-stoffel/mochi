@@ -104,10 +104,10 @@
       const sw = (label, on, name, arg) => h('button', { class: 'set', onclick: () => act(name, arg) }, label, h('span', { class: 'switch' + (on ? ' on' : '') }));
       const tg = (label, key) => sw(label, (S.toggles || {})[key] !== false, 'toggle', key);
       const sizes = [['s', 2], ['m', 3], ['l', 4], ['xl', 6]];
-      pickers().querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.id === S.provider));
       return [
-        h('h2', {}, 'who am i', h('span', { class: 'end small' }, 'i follow that agent')),
-        pickers(),
+        h('h2', {}, 'your agent', h('span', { class: 'end small' }, 'i follow it and show its plan')),
+        h('div', { class: 'set' }, 'agent', h('span', { class: 'seg' }, PROVIDERS.map((id) =>
+          h('button', { class: S.provider === id ? 'on' : '', onclick: () => act('provider', id) }, look(id).name.toLowerCase())))),
         h('h2', {}, 'mochi'),
         h('div', { class: 'set' }, 'size', h('span', { class: 'seg' }, sizes.map(([l, v]) =>
           h('button', { class: S.scale === v ? 'on' : '', onclick: () => act('size', v) }, l)))),
@@ -141,29 +141,16 @@
     },
   };
 
-  // Built once (and again when Mochi changes critter), so each little critter keeps animating instead of restarting
-  // every second.
-  let closetFor = '', closetEl = null, pickerEl = null;
+  // Built once, so each little critter keeps animating instead of restarting every second.
+  let closetEl = null;
   function dressUp() {
-    if (closetEl && closetFor === S.provider) return closetEl;
-    closetFor = S.provider;
-    const L = look();
+    if (closetEl) return closetEl;
     closetEl = h('div', { class: 'closet' }, COSTUMES.map(([id, label]) => {
       const stage = h('div', { class: 'stage' });
-      new Critter(stage, { pose: id, scale: 1.5, species: L.species, palette: L.palette, particles: false });
+      new Critter(stage, { pose: id, scale: 1.5, particles: false });
       return h('button', { 'data-id': id, title: label, onclick: () => act('pet', id === 'idle' || id === S.wearing ? 'wear:none' : 'wear:' + id) }, stage, h('span', {}, label));
     }));
     return closetEl;
-  }
-  function pickers() {
-    if (pickerEl) return pickerEl;
-    pickerEl = h('div', { class: 'closet' }, PROVIDERS.map((id) => {
-      const stage = h('div', { class: 'stage' });
-      const L = look(id);
-      new Critter(stage, { pose: 'idle', scale: 1.5, species: L.species, palette: L.palette, particles: false });
-      return h('button', { 'data-id': id, title: L.name, onclick: () => act('provider', id) }, stage, h('span', {}, L.name.toLowerCase()));
-    }));
-    return pickerEl;
   }
 
   // ---------- drawing ----------

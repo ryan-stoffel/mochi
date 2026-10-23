@@ -1,7 +1,7 @@
 import AppKit
 import MochiCore
 
-/// Draws the menu bar icon: the selected provider's critter as a pixel silhouette, with its usage beside it in the
+/// Draws the menu bar icon: Mochi as a pixel silhouette, with the selected provider's usage beside it in the
 /// menu bar's own font. A template image, so macOS tints it like every other icon up there, light bar or dark.
 enum TrayIconRenderer {
 
@@ -11,8 +11,8 @@ enum TrayIconRenderer {
     private static let critterHeight: CGFloat = 18
 
     /// `pct` nil shows "–" while there's nothing to show yet, or "!" when the provider is failing.
-    static func icon(provider: String, pct: Int?, mood: Mood) -> NSImage {
-        let rows = silhouette(provider, mood: mood)
+    static func icon(pct: Int?, mood: Mood) -> NSImage {
+        let rows = TraySprites.mochi.template
         let cols = rows.first?.count ?? 0
         // Whole device pixels on a 2x screen (1, 1.5, 2...), and never under 1pt so tall critters stay legible.
         let px = max(1, (critterHeight * 2 / CGFloat(max(rows.count, 1))).rounded(.down) / 2)
@@ -51,12 +51,6 @@ enum TrayIconRenderer {
         ]]])
         return NSFont(descriptor: descriptor, size: base.pointSize) ?? base
     }()
-
-    /// The critter as `#` (filled) and `.` (clear) rows, its eyes (or face screen) punched out so it still has a face
-    /// in one colour. Drawn by scripts/tray-sprites.js from the critter itself.
-    static func silhouette(_ provider: String, mood: Mood) -> [String] {
-        (TraySprites.all[provider] ?? TraySprites.all["claude"]!).template
-    }
 }
 
 extension NSColor {

@@ -74,7 +74,7 @@ final class StatusItemController {
         let mood: TrayIconRenderer.Mood
         if usage.isRefreshing { mood = .busy } else if case .error = status.state { mood = .error } else { mood = .fine }
         let pct = usage.primaryPct(provider.id)
-        button.image = TrayIconRenderer.icon(provider: provider.id, pct: pct, mood: mood)
+        button.image = TrayIconRenderer.icon(pct: pct, mood: mood)
         let tip = tooltip(for: provider, status: status)
         button.toolTip = tip
         button.setAccessibilityLabel(pct.map { "Mochi, \(provider.name) \($0) percent used" } ?? "Mochi")

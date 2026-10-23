@@ -19,11 +19,10 @@
     for (const k of kids.flat()) if (k != null && k !== false) el.append(k.nodeType ? k : document.createTextNode(k));
     return el;
   }
-  // a provider's mini, live, standing on a little stage
-  function mini(id, pose, scale, cls) {
-    const stage = h('div', { class: 'stage ' + (cls || '') });
-    const look = MINI_LOOKS[id] || {};
-    new Critter(stage, { pose, scale, species: look.species, palette: look.palette });
+  // Mochi, live, standing on a little stage
+  function mini(pose, scale) {
+    const stage = h('div', { class: 'stage' });
+    new Critter(stage, { pose, scale });
     return stage;
   }
 
@@ -31,23 +30,23 @@
   const steps = () => ['welcome', 'claude', 'providers', ...(S.notch ? ['appearance'] : []), 'login', 'done'];
   const tool = (id) => (S.providers || []).find((p) => p.id === id) || { id, name: (MINI_LOOKS[id] || {}).name || id, line: 'looking...' };
 
-  // one detected tool: its mini, its status, and whatever unblocks it
-  function card(p, bare) {
-    return h('div', { class: 'set det' }, !bare && mini(p.id, 'idle', 1.25),
+  // one detected tool: its status, and whatever unblocks it
+  function card(p) {
+    return h('div', { class: 'set det' },
       h('div', { class: 'who' }, h('div', {}, p.name.toLowerCase()), h('div', { class: 'line ' + (p.tone || '') }, p.line)),
       p.action ? h('button', { class: 'pxb', onclick: () => act(p.action.name, p.id) }, p.action.title)
         : h('span', { class: 'mark' }, p.tone === 'ok' ? 'ready' : ''));
   }
 
-  // a step's centrepiece: one mini, big, in the space above the step's controls
-  const hero = (pose, id) => [h('div', { class: 'grow' }), h('div', { class: 'hero' }, mini(id || S.provider || 'claude', pose, 3.5)), h('div', { class: 'grow' })];
+  // a step's centrepiece: Mochi, big, in the space above the step's controls
+  const hero = (pose) => [h('div', { class: 'grow' }), h('div', { class: 'hero' }, mini(pose, 3.5)), h('div', { class: 'grow' })];
 
   const STEPS = {
     welcome: () => ({
       title: 'welcome to mochi',
       sub: 'a pixel critter for your desktop, your agents and your plans.',
       body: [
-        h('div', { class: 'row' }, Object.keys(MINI_LOOKS).map((id) => mini(id, 'wave', 2.5))),
+        h('div', { class: 'hero' }, mini('wave', 3.5)),
         h('div', { class: 'floor' }),
         h('p', {}, 'mochi lives on your screen and acts out what claude, codex, antigravity and cursor are up to. it also reads how much of each plan you\'ve used, straight from the tools you already have.'),
         h('p', { class: 'muted' }, 'it checks every few minutes. nothing leaves your mac.'),
@@ -56,7 +55,7 @@
     claude: () => ({
       title: 'checking claude code',
       sub: 'mochi reads your claude plan from it.',
-      body: [hero(tool('claude').tone === 'ok' ? 'wave' : tool('claude').tone ? 'idle' : 'think', 'claude'), card(tool('claude'), true)],
+      body: [hero(tool('claude').tone === 'ok' ? 'wave' : tool('claude').tone ? 'idle' : 'think'), card(tool('claude'))],
     }),
     providers: () => ({
       title: 'other tools',

@@ -2,7 +2,7 @@ import SwiftUI
 import MochiCore
 
 enum IconKind {
-    case critter(String) // a provider's mini, by provider id
+    case critter         // Mochi
     case pixel(String)   // one of `PixelIcon`'s icons
 }
 
@@ -26,7 +26,7 @@ struct Bubble: Identifiable {
     static func providers(claude: ClaudeUsage, providerStatus: [String: ProviderStatus], antigravity: GeminiUsage?, codex: CodexUsage?, cursor: CursorUsage?) -> [Bubble] {
         Provider.all.map { p in
             if p.id == "claude" {
-                return Bubble(id: p.id, label: p.name, color: p.color, icon: .critter(p.id),
+                return Bubble(id: p.id, label: p.name, color: p.color, icon: .critter,
                               pct: claude.session,
                               big: claude.session != nil ? "\(claude.session!)%" : "—",
                               sub: claude.errorType == "offline" ? "Offline" : nil)
@@ -37,20 +37,20 @@ struct Bubble: Identifiable {
                 // the 5-hour window is Antigravity's rolling short-term
                 // quota, falling back to weekly if that's all that parsed.
                 let pct = g.fiveHourPct ?? g.weeklyPct
-                return Bubble(id: p.id, label: p.name, color: p.color, icon: .critter(p.id),
+                return Bubble(id: p.id, label: p.name, color: p.color, icon: .critter,
                               pct: pct, big: pct != nil ? "\(pct!)%" : "—", sub: nil)
             }
             if p.id == "codex", status.state == .loggedIn, let c = codex {
                 let pct = c.primaryPct
-                return Bubble(id: p.id, label: p.name, color: p.color, icon: .critter(p.id),
+                return Bubble(id: p.id, label: p.name, color: p.color, icon: .critter,
                               pct: pct, big: pct != nil ? "\(pct!)%" : "—", sub: nil)
             }
             if p.id == "cursor", status.state == .loggedIn, let cu = cursor {
                 let pct = cu.primaryPct
-                return Bubble(id: p.id, label: p.name, color: p.color, icon: .critter(p.id),
+                return Bubble(id: p.id, label: p.name, color: p.color, icon: .critter,
                               pct: pct, big: pct != nil ? "\(pct!)%" : "—", sub: nil)
             }
-            return Bubble(id: p.id, label: p.name, color: p.color, icon: .critter(p.id),
+            return Bubble(id: p.id, label: p.name, color: p.color, icon: .critter,
                           pct: nil, big: "", sub: status.message(installHint: p.hint))
         }
     }

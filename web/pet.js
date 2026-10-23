@@ -17,7 +17,6 @@
     z: '#FFD54A', Z: '#F2A93B', O: '#FFF6C8',                                              // gold, glow
     x: '#FF4F6E', i: '#FF5C7C', h: '#7A5233', H: '#54381F', F: '#F2C27A', f: '#D99A4E',    // misc
     E: '#D3C7A3', Q: '#A99B76', J: '#1F4D3E', I: '#C8E86B',                                // tv
-    9: '#1D2150', 1: '#4A8CF7', 2: '#6C7EEB', 3: '#957ADB', 4: '#C474B0',                // Codex's visor, Gemini's gradient
   };
 
   const sp = (rows) => ({ rows, w: rows[0].length, h: rows.length });
@@ -53,77 +52,6 @@
     thin: { s: bodySprite(8, 10), dx: 3, dy: 0 },
     edge: { s: bodySprite(4, 10), dx: 5, dy: 0 },
   };
-
-  // Other agents' minis: the same rig (poses, props, arms, costumes) on a different body. Mochi (Claude) has none.
-  //   x, y: where the sprite starts, from the body's top-left; eye: moves the face down; fx: moves it sideways;
-  //   crown: the sprite row where its head proper starts (hats, headphones and headbands sit there);
-  //   hb: its head's [left x, width] from the body's left, for centring hats and signs;
-  //   arms: [left x, width, shoulder row]; legs: columns, or null to hover; limb: [arm/leg, foot] colours.
-  const SPECIES = {
-    // Codex's pet: a cloud head with a dark visor, and >_ on a little terminal for a chest.
-    codex: { x: -1, y: -6, eye: -3, crown: 0, hb: [-1, 16], arms: [3, 8, 6], legs: [4, 5, 8, 9], s: sp([
-      '...lll....lll...',
-      '..lbbbl..lbbbl..',
-      '.lbbbbbllbbbbbs.',
-      'lbbbbbbbbbbbbbbs',
-      'lbb9999999999bbs',
-      'lb999999999999bs',
-      'lb999999999999bs',
-      'bb999999999999bs',
-      'bbb9999999999bss',
-      '.sbbbbbbbbbbbss.',
-      '...ssssssssss...',
-      '....lbbbbbbs....',
-      '....b9W999bs....',
-      '....b99W99bs....',
-      '....b9W9WWbs....',
-      '....ssssssss....',
-    ]) },
-    // Gemini (Antigravity): a little floating bot in Gemini's blue-to-rose, with a white face screen and Gemini's
-    // four-point sparkle on its antenna and its chest.
-    gemini: { x: 0, y: -7, eye: -2, crown: 4, hb: [1, 12], arms: [4, 6, 7], legs: null, s: sp([
-      '.........1....',
-      '........1w1...',
-      '.........1....',
-      '.........1....',
-      '...11111111...',
-      '..1111111111..',
-      '.111111111111.',
-      '.222wwwwww222.',
-      '.22wwwwwwww22.',
-      '.33wwwwwwww33.',
-      '.333wwwwww333.',
-      '..3333333333..',
-      '...44444444...',
-      '....44ww44....',
-      '....4wwww4....',
-      '....44ww44....',
-      '.....4444.....',
-    ]) },
-    // Cursor: a mouse pointer, the Mac's own black arrow with its white edge, on two little legs.
-    cursor: { x: 0, y: -5, eye: 2, fx: -2, crown: 0, hb: [-3, 10], arms: [0, 11, 5], legs: [2, 4], limb: ['g', 'G'], s: sp([
-      'w..............',
-      'ww.............',
-      'wbw............',
-      'wbbw...........',
-      'wbbbw..........',
-      'wbbbbw.........',
-      'wbbbbbw........',
-      'wbbbbbbw.......',
-      'wbbbbbbbw......',
-      'wbbbbbbbbw.....',
-      'wbbbbbbbbbw....',
-      'wbbbbbbbbbbw...',
-      'wbbbbbbbbbbbw..',
-      'wwwwwwwbbwwwww.',
-      '......wbbbw....',
-      '.......wbbbw...',
-      '........www....',
-    ]) },
-  };
-
-  /** The canvas row of the top of a species' head at rest (Mochi's is 20), for putting a speech bubble just above it. */
-  const headRow = (name) => { const S = SPECIES[name]; return S ? BY + S.y - (S.legs ? 0 : 2) : BY; };
 
   // eyes: [sprite rows, x offset from body center, y offset from body top]; right eye mirrors the left
   const EYES = {
@@ -165,12 +93,12 @@
     waterTilt: { s: sp(['......VVV.', '.....V...V', '...BBBBBBV', 'BBBBBBBBB.', '...BBBBBB.', '...VVVVVV.']), grab: [9, 2] },
     pan: { s: sp(['....K.....K', 'GGGGKKKKKKK', '.....KKKKK.']), grab: [0, 1] },
     magnifier: { s: sp(['.ggg.', 'gAAwg', 'gAAAg', 'gAAAg', '.ggg.', 'h....', 'h....']), grab: [0, 6] },
+    // a cog, held up while its panel is open
+    gear: { s: sp(['...GGG...', '.GGGqGGG.', '.GqqqqqG.', 'GGqqGqqGG', 'GqqG.GqqG', 'GGqqGqqGG', '.GqqqqqG.', '.GGGqGGG.', '...GGG...']), grab: [0, 7] },
     popcorn: { s: sp(['.OwOzO.', 'OzOwOwO', 'RwRwRwR', 'RwRwRwR', '.RwRwR.', '.RwRwR.']), grab: [6, 3] },
     duck: { s: sp(['..zz...', '.zezz..', 'ZZzzz..', '..zzzzz', '.zzzzzz', '..zzzz.']), grab: [6, 4] },
     // Claude Code's work: a checklist (tests, the plan) and a parcel (a commit going out)
     clip: { s: sp(['..gg..', 'nPggPn', 'nPPPPn', 'nPMMPn', 'nPPPPn', 'nPMMPn', 'nPPPPn', 'nnnnnn']), grab: [5, 4] },
-    // a cog, held up while its panel is open
-    gear: { s: sp(['...GGG...', '.GGGqGGG.', '.GqqqqqG.', 'GGqqGqqGG', 'GqqG.GqqG', 'GGqqGqqGG', '.GqqqqqG.', '.GGGqGGG.', '...GGG...']), grab: [0, 7] },
     box: { s: sp(['ffffffff', 'fFFzzFFf', 'fFFzzFFf', 'fFFFFFFf', 'fFFFFFFf', 'ffffffff']), grab: [7, 3] },
   };
   const LAPTOP = sp(['...KKKKKKK', '..KkkkkkkK', '..KkkkkkK.', '.KkkkkkkK.', '.KKKKKKKK.', 'gggggggggg', 'KKKKKKKKKK']);
@@ -351,7 +279,6 @@
     jump(st, f, pf) { if (pf < 9) { hop(st, pf); st.oy *= 1.6; st.oy = Math.round(st.oy); } },
     cheer(st, f) { hop(st, f % 9); const a = (f >> 1) % 2; st.armL = a ? 'up' : 'out'; st.armR = a ? 'out' : 'up'; },
     party(st, f) { hop(st, f % 9); const a = (f >> 1) % 2; st.armL = st.armR = a ? 'up' : 'out'; },
-    tinker(st, f) { st.bob = f % 30 >= 15 ? 1 : 0; st.heldRDy = f % 16 < 8 ? 0 : -1; },
     wave(st, f) { st.armR = (f >> 1) % 2 ? 'up' : 'out'; st.bob = f % 30 >= 15 ? 1 : 0; },
     walk(st, f) {
       const step = (f >> 1) % 4;
@@ -414,6 +341,7 @@
       st.heldRDy = c === 0 || c === 1 ? -1 : 0;
       st.sizzle = c >= 12;
     },
+    tinker(st, f) { st.bob = f % 30 >= 15 ? 1 : 0; st.heldRDy = f % 16 < 8 ? 0 : -1; },
     tv(st, f) { st.bob = f % 30 >= 15 ? 1 : 0; st.tvFace = f % 50 > 46 ? 'blink' : f % 120 > 100 ? 'sad' : 'smile'; },
     stroll(st, f, pf, v) {
       const step = (f >> 1) % 4;
@@ -492,9 +420,7 @@
     constructor(el, opts = {}) {
       this.el = el;
       this.scale = opts.scale || 6;
-      this.pal = opts.palette ? Object.assign({}, PAL, opts.palette) : PAL;
       this.particles = opts.particles !== false;
-      this.species = SPECIES[opts.species] || null;
       el.classList.add('critter');
       el.innerHTML = '';
       this.canvas = document.createElement('canvas');
@@ -594,7 +520,7 @@
 
     // ---------- drawing ----------
     _px(x, y, c) {
-      const col = this.pal[c] || c;
+      const col = PAL[c] || c;
       if (!col || x < 0 || y < 0 || x >= CW || y >= CH) return;
       this.b.fillStyle = col;
       this.b.fillRect(x | 0, y | 0, 1, 1);
@@ -650,22 +576,12 @@
       const b = this.b;
       b.clearRect(0, 0, CW, CH);
       const ox = st.ox, oy = st.oy;
-      const S = this.species;
-      // A species keeps its one shape and only takes a squash's drop; a floater hovers 2px up.
       const body = BODIES[st.body] || BODIES.base;
-      const bx = BX + ox + (S ? 0 : body.dx), top = BY + oy + body.dy + st.bob - (S && !S.legs ? 2 : 0);
-      const bw = S ? BW : body.s.w;
-      const head = S ? top + S.y : top;   // highest row of the sprite, for things over its head
-      const crown = S ? head + S.crown : top;   // where its head proper starts: hats and headphones go here
-      const face = S ? top + S.eye : top;
+      const bx = BX + ox + body.dx, top = BY + oy + body.dy + st.bob;
+      const bw = body.s.w, bh = body.s.h;
       const cx = bx + bw / 2;
-      const eyeCx = Math.round(cx) + (S && S.fx || 0);
-      const hx0 = S ? bx + S.hb[0] : bx, hw = S ? S.hb[1] : bw;   // its head, left edge and width
-      const limb = S && S.limb ? { b: S.limb[0], s: S.limb[1] } : null;
       const ex = Math.max(-1, Math.min(1, st.lx | 0)), ey = Math.max(-1, Math.min(1, st.ly | 0));
-      // arms and held things attach to the torso, which on some species is narrower than the head
-      const abx = S ? bx + S.arms[0] : bx, abw = S ? S.arms[1] : bw;
-      const shoulder = S ? top + S.arms[2] : top + 5;
+      const shoulder = top + 5;
 
       // ground: plant
       if (P.ground === 'plant') {
@@ -673,27 +589,28 @@
         if (st.grow) this._px(4, 24, 'L');
       }
       // shadow
-      const sw = Math.round((oy < -3 || (S && !S.legs) ? 8 : 12) * st.shadow);
+      const sw = Math.round((oy < -3 ? 8 : 12) * st.shadow);
       for (let i = 0; i < sw; i++) this._px(BX + ox + 1 + (12 - sw) / 2 + i, BY + BH + 2, 'rgba(60,30,20,0.16)');
       // legs
-      (S ? S.legs || [] : LEGS).forEach((lx0, i) => {
-        const lx = !S && bw < BW ? Math.round(body.dx + (lx0 * (bw - 1)) / (BW - 1)) : lx0;   // tucked in under a narrow body
+      LEGS.forEach((lx0, i) => {
+        const lx = bw < BW ? Math.round(body.dx + (lx0 * (bw - 1)) / (BW - 1)) : lx0;   // tucked in under a narrow body
         const x = BX + ox + lx, y0 = BY + oy + BH - 1 - st.legLift[i];
-        const shoes = P.legs === 'sneakers', leg = limb ? limb.b : 'b';
-        this._px(x, y0, leg);
-        this._px(x, y0 + 1, leg);
-        this._px(x, y0 + 2, shoes ? 'w' : limb ? limb.s : 's');
+        const shoes = P.legs === 'sneakers';
+        this._px(x, y0, 'b');
+        this._px(x, y0 + 1, 'b');
+        this._px(x, y0 + 2, shoes ? 'w' : 's');
       });
       // body
-      this._spr(S ? S.s : body.s, bx + (S ? S.x : 0), head);
+      this._spr(body.s, bx, top);
       const costume = P.acc.includes('tv');
       if (!costume && st.eyes !== 'none') {   // 'none': we're looking at its back
-        if (P.blush) { this._px(eyeCx - 6, face + 5, 'p'); this._px(eyeCx - 5, face + 5, 'p'); this._px(eyeCx + 4, face + 5, 'p'); this._px(eyeCx + 5, face + 5, 'p'); }
-        this._glyph(EYES[st.eyes] || EYES.open, eyeCx, face, ex, ey);
-        if (P.brows && BROWS[P.brows]) this._glyph(BROWS[P.brows], eyeCx, face, ex, Math.min(ey, 0));
-        if (st.mouth && MOUTHS[st.mouth]) this._glyph(MOUTHS[st.mouth], eyeCx, face, ex, ey, false);
+        if (P.blush) { this._px(Math.round(cx - 6), top + 5, 'p'); this._px(Math.round(cx - 5), top + 5, 'p'); this._px(Math.round(cx + 4), top + 5, 'p'); this._px(Math.round(cx + 5), top + 5, 'p'); }
+        const eyeCx = Math.round(cx);
+        this._glyph(EYES[st.eyes] || EYES.open, eyeCx, top, ex, ey);
+        if (P.brows && BROWS[P.brows]) this._glyph(BROWS[P.brows], eyeCx, top, ex, Math.min(ey, 0));
+        if (st.mouth && MOUTHS[st.mouth]) this._glyph(MOUTHS[st.mouth], eyeCx, top, ex, ey, false);
         if (P.acc.includes('shades')) {
-          const y = face + 3;
+          const y = top + 3;
           for (let i = 0; i < 3; i++) for (let j = 0; j < 2; j++) { this._px(eyeCx - 5 + i, y + j, 'K'); this._px(eyeCx + 2 + i, y + j, 'K'); }
           for (let i = -2; i < 2; i++) this._px(eyeCx + i, y, 'K');
           this._px(eyeCx - 6, y, 'K'); this._px(eyeCx + 5, y, 'K');
@@ -701,49 +618,44 @@
         }
       }
       // accessories on the body
-      if (P.acc.includes('beard')) this._spr(BEARD, S ? eyeCx - 5 : bx + 2, face + 5);
+      if (P.acc.includes('beard')) this._spr(BEARD, bx + 2, top + 5);
       if (P.acc.includes('headband')) {
-        const y = crown + 1;
-        for (let x = 0; x < hw; x++) this._px(hx0 + x, y, x % 4 === 1 ? 'w' : 'x');
-        this._px(hx0 + hw, y, 'x'); this._px(hx0 + hw + 1, y + 1, 'x'); this._px(hx0 + hw, y + 1, 'x');
+        for (let x = 0; x < bw; x++) this._px(bx + x, top + 1, x % 4 === 1 ? 'w' : 'x');
+        this._px(bx + bw, top + 1, 'x'); this._px(bx + bw + 1, top + 2, 'x'); this._px(bx + bw, top + 2, 'x');
       }
-      if (P.acc.includes('sweat')) { const k = f % 16; if (k < 12) { const y = crown - 1 + (k >> 2); this._px(hx0 + hw - 2, y, 'u'); this._px(hx0 + hw - 2, y + 1, 'u'); this._px(hx0 + hw - 1, y + 1, 'u'); } }
+      if (P.acc.includes('sweat')) { const k = f % 16; if (k < 12) { const y = top - 1 + (k >> 2); this._px(bx + bw - 2, y, 'u'); this._px(bx + bw - 2, y + 1, 'u'); this._px(bx + bw - 1, y + 1, 'u'); } }
       if (costume) {
-        // the TV goes over its face, whatever shape it is
-        const tx = S ? eyeCx - 8 : bx - 1, ty = face - 1;
-        this._spr(TV, tx, ty);
-        const tvf = st.tvFace, fx = tx + 4, fy = ty + 3;
-        if (tvf === 'blink') { this._px(fx + 2, fy + 2, 'I'); this._px(fx + 3, fy + 2, 'I'); this._px(fx + 7, fy + 2, 'I'); this._px(fx + 8, fy + 2, 'I'); }
+        this._spr(TV, bx - 1, top - 1);
+        const face = st.tvFace, fx = bx + 3, fy = top + 2;
+        if (face === 'blink') { this._px(fx + 2, fy + 2, 'I'); this._px(fx + 3, fy + 2, 'I'); this._px(fx + 7, fy + 2, 'I'); this._px(fx + 8, fy + 2, 'I'); }
         else { this._px(fx + 2, fy + 1, 'I'); this._px(fx + 2, fy + 2, 'I'); this._px(fx + 8, fy + 1, 'I'); this._px(fx + 8, fy + 2, 'I'); }
-        if (tvf === 'sad') { this._px(fx + 4, fy + 5, 'I'); this._px(fx + 5, fy + 4, 'I'); this._px(fx + 6, fy + 4, 'I'); this._px(fx + 7, fy + 5, 'I'); }
+        if (face === 'sad') { this._px(fx + 4, fy + 5, 'I'); this._px(fx + 5, fy + 4, 'I'); this._px(fx + 6, fy + 4, 'I'); this._px(fx + 7, fy + 5, 'I'); }
         else { this._px(fx + 3, fy + 4, 'I'); this._px(fx + 4, fy + 5, 'I'); this._px(fx + 5, fy + 5, 'I'); this._px(fx + 6, fy + 5, 'I'); this._px(fx + 7, fy + 4, 'I'); }
-        if (f % 8 < 4) this._px(tx + 13, ty + 7, 'I');
+        if (f % 8 < 4) this._px(bx + 12, top + 6, 'I');
       }
       if (P.acc.includes('headphones')) {
-        // a band over the crown, down to a cup on each side of the face
-        for (let x = 2; x < hw - 2; x++) { this._px(hx0 + x, crown - 2, 'Y'); this._px(hx0 + x, crown - 1, 'y'); }
-        this._px(hx0 + 1, crown - 1, 'Y'); this._px(hx0 + hw - 2, crown - 1, 'Y');
-        this._px(hx0, crown, 'Y'); this._px(hx0 + hw - 1, crown, 'Y');
-        for (let y = crown + 1; y <= face; y++) { this._px(hx0 - 1, y, 'Y'); this._px(hx0 + hw, y, 'Y'); }
+        for (let x = 2; x < bw - 2; x++) { this._px(bx + x, top - 2, 'Y'); this._px(bx + x, top - 1, 'y'); }
+        this._px(bx + 1, top - 1, 'Y'); this._px(bx + bw - 2, top - 1, 'Y');
+        this._px(bx, top, 'Y'); this._px(bx + bw - 1, top, 'Y');
         for (let y = 1; y <= 5; y++) {
           const edge = y === 1 || y === 5;
-          this._px(hx0 - 1, face + y, 'Y'); this._px(hx0, face + y, edge ? 'Y' : 'j');
-          this._px(hx0 + hw, face + y, 'Y'); this._px(hx0 + hw - 1, face + y, edge ? 'Y' : 'j');
+          this._px(bx - 1, top + y, 'Y'); this._px(bx, top + y, edge ? 'Y' : 'j');
+          this._px(bx + bw, top + y, 'Y'); this._px(bx + bw - 1, top + y, edge ? 'Y' : 'j');
         }
       }
-      if (P.acc.includes('napbook')) this._spr(NAPBOOK, hx0 - 1, crown - 4);
-      if (P.hat && HATS[P.hat]) { const [s, hx, overlap] = HATS[P.hat]; this._spr(s, hx0 + hx + (hw - BW) / 2, crown - s.h + overlap); }
+      if (P.acc.includes('napbook')) this._spr(NAPBOOK, bx - 1, top - 4);
+      if (P.hat && HATS[P.hat]) { const [s, hx, overlap] = HATS[P.hat]; this._spr(s, bx + hx + (bw - BW) / 2, top - s.h + overlap); }
       // signs over the head
-      const sign = (s) => { const x = Math.round(hx0 + (hw - s.w) / 2), y = head - s.h - 2 - (f % 30 < 15 ? 0 : 1); this._spr(s, x, y); return [x, y]; };
+      const sign = (s) => { const x = Math.round(bx + (bw - s.w) / 2), y = top - s.h - 2 - (f % 30 < 15 ? 0 : 1); this._spr(s, x, y); return [x, y]; };
       if (P.acc.includes('mute')) sign(MUTE);
       if (P.acc.includes('alert')) sign(ALERT);
       if (P.acc.includes('check')) sign(CHECK);
       if (P.acc.includes('dots')) {   // ... thinking
-        const n = 1 + ((f >> 2) % 3), y = head - 4 - (f % 30 < 15 ? 0 : 1);
-        for (let i = 0; i < n; i++) { this._px(hx0 + hw + 1 + i * 2, y - i, 'G'); }
+        const n = 1 + ((f >> 2) % 3), y = top - 4 - (f % 30 < 15 ? 0 : 1);
+        for (let i = 0; i < n; i++) { this._px(bx + bw + 1 + i * 2, y - i, 'G'); }
       }
       if (P.acc.includes('binoculars')) {
-        const ec = eyeCx + ex, y = face + 2;
+        const ec = Math.round(cx) + ex, y = top + 2;
         [ec - 6, ec + 1].forEach((x0) => { for (let i = 0; i < 4; i++) for (let j = 0; j < 3; j++) this._px(x0 + i, y + j, i > 0 && i < 3 && j === 1 ? 'a' : 'K'); });
         this._px(ec - 2, y + 1, 'K'); this._px(ec, y + 1, 'K'); this._px(ec - 1, y + 1, 'K');
       }
@@ -760,7 +672,7 @@
       }
       if (st.orbit != null) for (let k = 0; k < 2; k++) {
         const a = st.orbit * 0.7 + k * Math.PI;
-        this._spr(FX.sparkle.sprites[0], Math.round(eyeCx - 1 + Math.cos(a) * 8), Math.round(crown - 3 + Math.sin(a) * 2));
+        this._spr(FX.sparkle.sprites[0], Math.round(cx - 1 + Math.cos(a) * 8), Math.round(top - 3 + Math.sin(a) * 2));
       }
 
       // held item, left hand
@@ -768,7 +680,7 @@
         const key = P.held === 'water' && st.tilt ? 'waterTilt' : P.held;
         const it = ITEMS[key];
         const hand = HANDS[st.armL] || HANDS.hold;
-        const x = abx + hand[0] - it.grab[0], y = shoulder + hand[1] + st.heldDy - it.grab[1];
+        const x = bx + hand[0] - it.grab[0], y = shoulder + hand[1] + st.heldDy - it.grab[1];
         this._spr(it.s, x, y);
         if (it.steam) for (let k = 0; k < 3; k++) {
           const ph = (f + k * 4) % 12;
@@ -780,9 +692,9 @@
       // held item, right hand
       if (P.heldR) {
         const hand = HANDS[st.armR] || HANDS.hold;
-        const hxR = abx + abw - 1 - hand[0], hyR = shoulder + hand[1] + st.heldRDy;
+        const hxR = bx + bw - 1 - hand[0], hyR = shoulder + hand[1] + st.heldRDy;
         if (P.heldR === 'staff') {
-          const sx = hxR, sy = shoulder - 11;
+          const sx = hxR, sy = top - 6;
           for (let y = sy + 2; y <= BY + oy + BH + 1; y++) this._px(sx, y, y === shoulder ? 'H' : 'h');
           if (st.glow) { [[-2, 0], [2, 0], [0, -2], [0, 2], [-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([a, c]) => this._px(sx + a, sy + c, 'rgba(255,214,74,0.45)')); }
           this._px(sx, sy, 'O'); this._px(sx - 1, sy, 'z'); this._px(sx + 1, sy, 'z'); this._px(sx, sy - 1, 'z'); this._px(sx, sy + 1, 'Z');
@@ -801,9 +713,9 @@
       if (st.ball) this._spr(BALL, st.ball[0], st.ball[1]);
       // book held in front (arms hidden behind it)
       if (P.front === 'book') {
-        const y = shoulder + 1, x = S ? Math.round(abx + (abw - BOOK.w) / 2) : bx + 1;
-        this._spr(BOOK, x, y);
-        if (st.flip) { for (let j = 0; j < 5; j++) this._px(x + 6 + st.flip, y + j, 'P'); }
+        const y = shoulder + 1;
+        this._spr(BOOK, bx + 1, y);
+        if (st.flip) { for (let j = 0; j < 5; j++) this._px(bx + 7 + st.flip, y + j, 'P'); }
       }
       // arms
       const drawArm = (name, side) => {
@@ -811,14 +723,14 @@
         if (!a) return;
         const [rows, ax, ay] = a;
         const s = sp(rows);
-        if (side === 'L') this._spr(s, abx + ax, shoulder + ay, false, limb);
-        else this._spr(s, abx + abw - ax - s.w, shoulder + ay, true, limb);
+        if (side === 'L') this._spr(s, bx + ax, shoulder + ay);
+        else this._spr(s, bx + bw - ax - s.w, shoulder + ay, true);
       };
       drawArm(st.armL, 'L');
       drawArm(st.armR, 'R');
       if (P.acc.includes('poms')) {
         const pom = (x, y) => { this._px(x, y, 'z'); this._px(x - 1, y, 'i'); this._px(x + 1, y, 'i'); this._px(x, y - 1, 'i'); this._px(x, y + 1, 'i'); };
-        const hand = (name, side) => { const h = HANDS[name] || HANDS.rest; return side === 'L' ? [abx + h[0], shoulder + h[1]] : [abx + abw - 1 - h[0], shoulder + h[1]]; };
+        const hand = (name, side) => { const h = HANDS[name] || HANDS.rest; return side === 'L' ? [bx + h[0], shoulder + h[1]] : [bx + bw - 1 - h[0], shoulder + h[1]]; };
         pom(...hand(st.armL, 'L'));
         pom(...hand(st.armR, 'R'));
       }
@@ -838,7 +750,7 @@
       // carrying the ball in its mouth, like a dog
       if (this.carry && TOYS[this.carry] && st.eyes !== 'none') {
         const s = TOYS[this.carry];
-        this._spr(s, eyeCx - (s.w >> 1) + ex, face + 5);
+        this._spr(s, Math.round(cx) - (s.w >> 1) + ex, top + 5);
       }
 
       // particles
@@ -873,7 +785,6 @@
   Critter.POSES = Object.keys(POSES);
   Critter.PAL = PAL;
   Critter.SIZE = [CW, CH];
-  Critter.headRow = headRow;
   root.Critter = Critter;
   root.MochiView = Critter;
 })(typeof window !== 'undefined' ? window : this);

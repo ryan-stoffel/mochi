@@ -1,15 +1,14 @@
 import AppKit
 import SwiftUI
 
-/// A provider's mini standing still, drawn natively from `TraySprites` (the same pixels as the critter on screen),
+/// Mochi standing still, drawn natively from `TraySprites` (the same pixels as the critter on screen),
 /// `height` points tall. Used where a page can't go: the notch.
 struct PixelCritter: View {
-    let provider: String
     var height: CGFloat = 18
     var busy = false
 
     var body: some View {
-        let image = Self.image(provider, mood: busy ? .busy : .fine)
+        let image = Self.image(mood: busy ? .busy : .fine)
         // One bitmap pixel per critter pixel, scaled up with no smoothing: crisp, and no seams between squares.
         Image(decorative: image, scale: 1)
             .resizable()
@@ -17,13 +16,12 @@ struct PixelCritter: View {
             .frame(width: height * CGFloat(image.width) / CGFloat(image.height), height: height)
     }
 
-    private static var cache: [String: CGImage] = [:]
+    private static var cache: [TrayIconRenderer.Mood: CGImage] = [:]
 
     /// The sprite as a bitmap, one pixel per critter pixel. Shared with the menu bar icon.
-    static func image(_ provider: String, mood: TrayIconRenderer.Mood) -> CGImage {
-        let key = "\(provider):\(mood)"
-        if let hit = cache[key] { return hit }
-        let sprite = TraySprites.all[provider] ?? TraySprites.all["claude"]!
+    static func image(mood: TrayIconRenderer.Mood) -> CGImage {
+        if let hit = cache[mood] { return hit }
+        let sprite = TraySprites.mochi
         let rows: [String]
         switch mood {
         case .fine: rows = sprite.fine
@@ -43,7 +41,7 @@ struct PixelCritter: View {
             }
         }
         let image = ctx.makeImage()!
-        cache[key] = image
+        cache[mood] = image
         return image
     }
 }

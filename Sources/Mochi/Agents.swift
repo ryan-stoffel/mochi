@@ -68,7 +68,7 @@ final class Agents {
 
     // MARK: - What Mochi shows
 
-    /// For Mochi's page: what the sessions of the provider Mochi is dressed as are up to.
+    /// For Mochi's page: what the sessions of the provider Mochi follows are up to.
     func payload() -> [String: Any] {
         let p = config.provider
         return store.payload(for: p, name: Provider.byID(p)?.name ?? p)
