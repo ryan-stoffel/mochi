@@ -11,8 +11,13 @@ import MochiCore
 final class UsageShell: NSObject {
 
     let usage = UsageService()
-    // ponytail: the minis' controller stays only for Settings' sake until the pet takes over agent sessions.
-    lazy var minis = MinisController(usage: usage)
+    private let agents: Agents
+    private weak var pet: PetControls?
+
+    init(agents: Agents, pet: PetControls) {
+        self.agents = agents
+        self.pet = pet
+    }
 
     /// The usage dropdown, shared: the menu bar icon opens it, and so does right-clicking the notch.
     private lazy var menu = UsageMenu(usage: usage, onOpenSettings: { [weak self] in self?.openSettings() })
@@ -22,7 +27,7 @@ final class UsageShell: NSObject {
     private lazy var panel = NotchController(usage: usage)
 
     private lazy var settings = SettingsPage(
-        usage: usage, minis: minis,
+        usage: usage, agents: agents, pet: pet,
         onDisplayModeChange: { [weak self] mode in self?.apply(mode: mode) },
         onRunWizard: { [weak self] in self?.openWizard() })
 
@@ -85,6 +90,12 @@ final class UsageShell: NSObject {
         }
     }
 
+    /// Mochi was dressed as another provider: the menu bar follows it.
+    func providerChanged() {
+        Settings.shared.selectedProvider = agents.config.provider
+        usage.objectWillChange.send()
+    }
+
     // MARK: - Windows
 
     @objc func openSettings() { settings.show() }
@@ -93,7 +104,7 @@ final class UsageShell: NSObject {
 
     /// Notch mode has no menu bar icon, so right-clicking the notch opens the dropdown hanging from it instead.
     @objc func openMenuUnderNotch() {
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+        let screen = NotchGeometry.notchScreen
         let feet = screen.frame.maxY - NotchGeometry.info(for: screen).reservedTopHeight
         menu.show(x: screen.frame.midX, top: screen.frame.maxY, feet: feet - 2)
     }

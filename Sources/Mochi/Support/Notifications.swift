@@ -8,13 +8,13 @@ import Foundation
 /// here; anything it can request of its own shell stays a closure.
 extension Notification.Name {
     /// Posted when a view wants the Settings window opened.
-    static let openSettingsRequested = Notification.Name("com.eli.aiusage.openSettings")
+    static let openSettingsRequested = Notification.Name("com.joey.mochi.openSettings")
 
     /// Posted when a view wants the setup wizard shown.
-    static let openWizardRequested = Notification.Name("com.eli.aiusage.openWizard")
+    static let openWizardRequested = Notification.Name("com.joey.mochi.openWizard")
 
     /// Posted when the notch is right-clicked: the usage dropdown opens under it.
-    static let usageMenuRequested = Notification.Name("com.eli.aiusage.usageMenu")
+    static let usageMenuRequested = Notification.Name("com.joey.mochi.usageMenu")
 
     // `panelShouldCollapse` is declared by PanelController, which owns the
     // behaviour it drives — left there rather than hoisted here.

@@ -1,11 +1,14 @@
-// Mochi: a pixel critter that lives on your desktop and keeps you company.
+// Mochi: a pixel critter that lives on your desktop, keeps you company, follows your coding agents and keeps an eye
+// on your AI plans. It's dressed as the provider you pick: Claude's Mochi, Codex's pet, Gemini's or Cursor's.
 // The window is a transparent, always-on-top panel hosting web/index.html. This file does the Mac parts:
 // sensors (idle timers, sleep/wake, which app you're in, calls, battery), the window and how it gets around
 // your screens (walking, hopping between windows, falling, being thrown), the panel's actions, and saving state.
+// `Agents` hears what your agents are doing; `UsageShell` shows your usage in the menu bar or the notch.
 import AppKit
 import CoreAudio
 import CoreMediaIO
 import IOKit.ps
+import MochiCore
 import ServiceManagement
 import WebKit
 
@@ -130,6 +133,7 @@ final class PetWebView: WKWebView {
 
 // MARK: - App
 
+@MainActor
 final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavigationDelegate {
     var panel: PetPanel!
     var web: PetWebView!
@@ -181,7 +185,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
     var mood = "waking up"
     var stats: [String: Any] = [:]
     var wearing = ""
-    lazy var sheet = PanelController(webDir: webDir)
+    lazy var sheet = BubblePanel(page: "panel.html")
     var quiet = false
     var awaySince: Date?
     var activity: NSObjectProtocol?
@@ -191,19 +195,22 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
     var roam: Bool { defaults.object(forKey: "roam") as? Bool ?? true }
     var appAware: Bool { defaults.object(forKey: "appAware") as? Bool ?? true }
     var emoji: Bool { defaults.bool(forKey: "emoji") }   // off: pixel icons in the bubble
-    /// Reminders, Claude Code nudges and the session list, each turned off on its own in the panel; all on to start. brain.js reads them too.
+    /// Reminders, agent nudges and the session list, each turned off on its own in the panel; all on to start. brain.js
+    /// reads them too. (The agent ones keep their Claude names so existing settings carry over.)
     static let toggles = ["waterReminders", "walkReminders", "stretchReminders", "lunchReminders", "coffeeReminders",
                           "bedtimeReminders", "cheers", "claudeDone", "claudeFetch", "showSessions"]
     func isOn(_ key: String) -> Bool { defaults.object(forKey: key) as? Bool ?? true }
     var toggles: [String: Bool] { Dictionary(uniqueKeysWithValues: App.toggles.map { ($0, isOn($0)) }) }
-    var followClaude: Bool { defaults.object(forKey: "followClaude") as? Bool ?? true }
-    var narrateClaude: Bool { defaults.object(forKey: "narrateClaude") as? Bool ?? true }
-    var checkUsage: Bool { defaults.object(forKey: "checkUsage") as? Bool ?? true }   // ask Claude Code for usage every 5 minutes
-    lazy var shell = UsageShell()
-    lazy var claude = ClaudeCode(dataDir: dataDir)
-    lazy var claudeLinked = claude.connected
-    var lastClaude = ""
-    var claudeState = ""
+    /// Act out what your agents are doing, and say it out loud.
+    var follow: Bool { defaults.object(forKey: "followClaude") as? Bool ?? true }
+    var narrate: Bool { defaults.object(forKey: "narrateClaude") as? Bool ?? true }
+    lazy var agents = Agents(dataDir: dataDir)
+    lazy var shell = UsageShell(agents: agents, pet: self)
+    var usage: UsageService { shell.usage }
+    /// Which provider Mochi is dressed as, and follows.
+    var provider: String { agents.config.provider }
+    var lastAgent = ""
+    var agentState = ""
     var attentionAt = 0.0
     lazy var dataDir: URL = {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Mochi", isDirectory: true)
@@ -228,16 +235,15 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         if let r = forcedRoam { roamLevel = r; nextRoam = CACurrentMediaTime() + 3; rlog("ledges:", ledges.map { "\($0.win):\(Int($0.x0))-\(Int($0.x1))@\(Int($0.y))" }) }
         buildPanel()
         sheet.state = { [weak self] in self?.panelState() ?? [:] }
-        sheet.act = { [weak self] in self?.perform($0) }
+        sheet.act = { [weak self] name, arg in PanelAction(name: name, arg: arg).map { self?.perform($0) } }
         sheet.opened = { [weak self] in self?.js("mochi.menu(\($0))") }
         observeSystem()
-        claude.onChange = { [weak self] in
-            self?.pushClaude()
+        agents.onChange = { [weak self] in
+            self?.pushAgent()
             if self?.sheet.isOpen == true { self?.sheet.update() }
         }
-        claude.start()
-        if claudeLinked { try? claude.writeScripts() }   // keep the hook scripts current after an update
-        if checkUsage { DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in self?.claude.checkUsage() } }
+        agents.onClaudeLimits = { [weak self] limits in self?.usage.applyClaudeStatusLine(limits) }
+        agents.start()
         if !defaults.bool(forKey: "loginConfigured") {
             defaults.set(true, forKey: "loginConfigured")
             setOpenAtLogin(true)
@@ -258,7 +264,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         }
         var env: [String: Any] = ["app": true, "boot": bootTime() * 1000, "launched": Date().timeIntervalSince1970 * 1000,
                                   "scale": scale, "w": size.width, "h": size.height, "below": App.below, "emoji": emoji,
-                                  "toggles": toggles, "claude": followClaude, "narrate": narrateClaude]
+                                  "toggles": toggles, "follow": follow, "narrate": narrate, "provider": provider]
         if let speed = ProcessInfo.processInfo.environment["MOCHI_SPEED"], let v = Double(speed) { env["speed"] = v }
         if ProcessInfo.processInfo.environment["MOCHI_TRACE"] != nil { env["trace"] = true }
         let boot = "window.MOCHI_SAVED = \(saved); window.MOCHI_ENV = \(json(env));"
@@ -287,14 +293,14 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         lastSys = ""
         lastRoom = ""
-        lastClaude = ""
+        lastAgent = ""
         pushSys()
         sendRoom()
-        pushClaude()
-        // Claude Code is on this Mac but not connected yet: offer once
-        if claude.hasClaudeCode && !claude.connected && !defaults.bool(forKey: "claudeOffered") {
-            defaults.set(true, forKey: "claudeOffered")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in self?.js("mochi.claudeHint()") }
+        pushAgent()
+        // the provider Mochi is dressed as is on this Mac but not connected yet: offer once
+        if agents.canInstall(provider) && agents.installed[provider] != true && !defaults.bool(forKey: "offered-\(provider)") {
+            defaults.set(true, forKey: "offered-\(provider)")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 20) { [weak self] in self?.js("mochi.connectHint()") }
         }
     }
 
@@ -390,9 +396,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         js("window.mochi && mochi.tick(\(json(payload)))")
         ticks += 1
         if ticks % 2 == 0 { pushSys() }
-        claude.prune()
-        pushClaude()
-        if ticks % 300 == 0 && checkUsage { claude.checkUsage() }   // and every 5 minutes, fresh numbers
+        pushAgent()
     }
 
     /// Which app you're in, calls, fullscreen, music, battery, dark mode. Sent only when something changes.
@@ -410,50 +414,60 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         if s != lastSys { lastSys = s; js("window.mochi && mochi.sys(\(s))") }
     }
 
-    // MARK: Claude Code
+    // MARK: agents
 
-    /// Tells the page what Claude Code is up to, when that changes.
-    func pushClaude() {
-        let d = claude.payload()
+    /// Tells the page what the agents Mochi follows are up to, when that changes.
+    func pushAgent() {
+        let d = agents.payload()
         let s = json(d)
-        guard s != lastClaude else { return }
-        lastClaude = s
-        js("window.mochi && mochi.claude(\(s))")
+        guard s != lastAgent else { return }
+        lastAgent = s
+        js("window.mochi && mochi.agent(\(s))")
         let state = d["state"] as? String ?? ""
-        // Claude needs you: come over to where your pointer is, so you notice
-        if state == "waiting" && claudeState != "waiting" && followClaude && isOn("claudeFetch") && roam && motion == .still && panel.isVisible {
+        // an agent needs you: come over to where your pointer is, so you notice
+        if state == "waiting" && agentState != "waiting" && follow && isOn("claudeFetch") && roam && motion == .still && panel.isVisible {
             let now = CACurrentMediaTime()
             if now - attentionAt > 45 { attentionAt = now; visitPointer(NSEvent.mouseLocation) }
         }
-        claudeState = state
+        agentState = state
     }
 
-    @objc func connectClaude() {
-        let on = !claude.connected
+    /// Connects (or disconnects) the CLI of the provider Mochi is dressed as.
+    @objc func connectAgent() {
+        let on = agents.installed[provider] != true
         do {
-            try claude.connect(on)
-            claudeLinked = on
-            if on { js("mochi.claudeConnected(true, '')") }
+            try agents.setInstalled(provider, on)
+            if on { js("mochi.agentConnected(true, '')") }
         } catch {
-            NSLog("[mochi] claude: %@", error.localizedDescription)
-            js("mochi.claudeConnected(false, \(json([error.localizedDescription]))[0])")
+            NSLog("[mochi] connect %@: %@", provider, error.localizedDescription)
+            js("mochi.agentConnected(false, \(json([error.localizedDescription]))[0])")
         }
     }
 
-    @objc func toggleFollowClaude() {
-        defaults.set(!followClaude, forKey: "followClaude")
-        js("mochi.setClaude(\(followClaude), \(narrateClaude))")
+    @objc func toggleFollow() {
+        defaults.set(!follow, forKey: "followClaude")
+        js("mochi.setFollow(\(follow), \(narrate))")
+    }
+
+    @objc func toggleNarrate() {
+        defaults.set(!narrate, forKey: "narrateClaude")
+        js("mochi.setFollow(\(follow), \(narrate))")
+    }
+
+    /// Dresses Mochi as another provider's critter, which it then follows.
+    func setProvider(_ id: String) {
+        guard Provider.byID(id) != nil, id != provider else { return }
+        agents.config.provider = id
+        lastAgent = ""
+        js("mochi.setProvider('\(id)')")
+        pushAgent()
+        shell.providerChanged()
     }
 
     /// Opening the panel with numbers more than a minute old asks for new ones.
     func freshenUsage() {
-        guard checkUsage, (claude.usageAt.map { Date().timeIntervalSince($0) > 60 } ?? true) else { return }
-        claude.checkUsage()
-    }
-
-    @objc func toggleNarrateClaude() {
-        defaults.set(!narrateClaude, forKey: "narrateClaude")
-        js("mochi.setClaude(\(followClaude), \(narrateClaude))")
+        guard (usage.lastUpdated(provider).map { Date().timeIntervalSince($0) > 60 } ?? true) else { return }
+        Task { await usage.refreshProvider(provider) }
     }
 
     // MARK: getting around
@@ -788,10 +802,12 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         case "log":
             let msg = String(describing: body["msg"] ?? "")
             if ProcessInfo.processInfo.environment["MOCHI_TRACE"] != nil { rlog(msg) } else { NSLog("[mochi] %@", msg) }
-        case "claudeFocus":
-            claude.focus(nil)
-        case "claudeConnect":
-            if !claude.connected { connectClaude() }
+        case "agentFocus":
+            agents.answerShown()
+        case "agentAck":
+            if let s = agents.summary().session { agents.acknowledge(s.id) }
+        case "agentConnect":
+            if agents.installed[provider] != true { connectAgent() }
         default:
             break
         }
@@ -838,28 +854,64 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
 
     /// Everything the panel shows, as of now, for web/panel.js.
     func panelState() -> [String: Any] {
-        func usage(_ w: UsageWindow?) -> Any {
-            guard let w else { return NSNull() }
-            return ["pct": w.pct, "resets": w.resets.map(PanelController.when) ?? ""]
-        }
+        let p = provider, now = Date()
         var updated = ""
-        if let at = claude.usageAt {
+        if usage.isRefreshing { updated = "checking..." } else if let at = usage.lastUpdated(p) {
             let f = RelativeDateTimeFormatter()
             f.unitsStyle = .short
-            updated = Date().timeIntervalSince(at) < 60 ? "updated just now" : "updated " + f.localizedString(for: at, relativeTo: Date())
+            updated = now.timeIntervalSince(at) < 60 ? "updated just now" : "updated " + f.localizedString(for: at, relativeTo: now)
         }
         return [
-            "tab": defaults.string(forKey: "panelTab") ?? "claude", "mood": mood, "stats": stats, "wearing": wearing,
+            "tab": defaults.string(forKey: "panelTab") ?? "usage", "mood": mood, "stats": stats, "wearing": wearing,
             "visible": panel.isVisible, "quiet": quiet, "roam": roam, "appAware": appAware, "emoji": emoji, "toggles": toggles,
             "login": SMAppService.mainApp.status == .enabled, "scale": Double(scale),
-            "follow": followClaude, "narrate": narrateClaude, "checkUsage": checkUsage, "canCheck": ClaudeCode.binary != nil,
-            "connected": claudeLinked, "listening": claude.listening, "port": Int(ClaudeCode.port),
-            "five": usage(claude.current(claude.fiveHour)), "week": usage(claude.current(claude.weekly)), "updated": updated,
+            "follow": follow, "narrate": narrate, "provider": p, "providerName": Provider.byID(p)?.name ?? p,
+            "connected": agents.installed[p] == true, "canConnect": agents.canInstall(p),
+            "listening": agents.listening, "port": Int(Agents.port),
+            "usage": usageWindows(p), "usageStatus": usageNote(p), "updated": updated,
             "version": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
-            "sessions": !isOn("showSessions") ? [] : claude.sessions.values.sorted { $0.last > $1.last }.prefix(8).map {
-                ["id": $0.id, "project": $0.project, "line": claude.describe($0), "needsYou": $0.need != nil, "busy": $0.busy]
+            "sessions": !isOn("showSessions") ? [] : agents.store.sessions(of: p).prefix(8).map {
+                ["id": $0.id, "project": $0.project.isEmpty ? (Provider.byID(p)?.name ?? p) : $0.project, "line": $0.describe(now),
+                 "needsYou": $0.alert == .needsInput || $0.need != nil, "failed": $0.alert == .failed,
+                 "done": $0.alert == .done, "busy": $0.busy]
             },
         ]
+    }
+
+    /// One provider's plan windows for the panel's meters: label, % used, when it starts over.
+    func usageWindows(_ id: String) -> [[String: Any]] {
+        func w(_ label: String, _ pct: Int?, _ resets: String?) -> [String: Any]? {
+            guard let pct else { return nil }
+            return ["label": label, "pct": pct, "resets": Format.reset(resets)?.lowercased() ?? ""]
+        }
+        switch id {
+        case "claude":
+            let c = usage.claude
+            return [w("5-hour limit", c.session, c.sessionReset), w("weekly limit", c.weekly, c.weeklyReset)].compactMap { $0 }
+        case "antigravity":
+            let g = usage.antigravity
+            return [w("5-hour limit", g?.fiveHourPct, g?.fiveHourReset), w("weekly limit", g?.weeklyPct, g?.weeklyReset)].compactMap { $0 }
+        case "codex":
+            return (usage.codex?.limits ?? []).compactMap { w($0.name.lowercased(), $0.pctUsed, $0.reset) }
+        case "cursor":
+            let c = usage.cursor
+            return (c?.rows ?? []).compactMap { w($0.name.lowercased(), $0.pctUsed, c?.reset) }
+        default:
+            return []
+        }
+    }
+
+    /// Why a provider has no numbers to show, in a few words.
+    func usageNote(_ id: String) -> String {
+        if let m = usage.status(id).message { return m.lowercased() }   // the specific reason, when the service has one
+        switch usage.status(id).state {
+        case .checking: return "checking..."
+        case .notInstalled: return "not on this mac"
+        case .installed: return "not signed in"
+        case .error(let m): return m.lowercased()
+        case .disabled: return "turned off in settings"
+        case .loggedIn: return ""
+        }
     }
 
     func perform(_ a: PanelAction) {
@@ -873,18 +925,22 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
             guard App.toggles.contains(key) else { break }
             defaults.set(!isOn(key), forKey: key)
             js("mochi.setToggle('\(key)', \(isOn(key)))")
-        case .focus(let id): sheet.close(); claude.focus(claude.sessions[id])
+        case .focus(let id):
+            sheet.close()
+            agents.acknowledge(id)
+            agents.focus(id)
+        case .provider(let id): setProvider(id)
         case .quiet: toggleQuiet()
         case .login: toggleLogin()
         case .corner: resetPosition()
         case .visible: toggleVisible()
-        case .connect: connectClaude()
-        case .follow: toggleFollowClaude()
-        case .narrate: toggleNarrateClaude()
-        case .checkUsage:
-            defaults.set(!checkUsage, forKey: "checkUsage")
-            if checkUsage { claude.checkUsage() }
-        case .refreshUsage: claude.checkUsage()
+        case .connect: connectAgent()
+        case .follow: toggleFollow()
+        case .narrate: toggleNarrate()
+        case .refreshUsage: Task { await usage.refreshProvider(provider) }
+        case .settings:
+            sheet.close()
+            NotificationCenter.default.post(name: .openSettingsRequested, object: nil)
         case .quit: NSApp.terminate(nil)
         }
         sheet.update()
@@ -968,6 +1024,40 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
     }
 }
 
+// MARK: - The pet's settings, for the Settings window
+
+extension App: PetControls {
+    func petState() -> [String: Any] {
+        var d: [String: Any] = ["scale": Double(scale), "provider": provider, "roam": roam, "appAware": appAware, "emoji": emoji,
+                                "quiet": quiet, "login": SMAppService.mainApp.status == .enabled, "visible": panel?.isVisible ?? true,
+                                "follow": follow, "narrate": narrate]
+        for key in App.toggles { d[key] = isOn(key) }
+        return d
+    }
+
+    func setPet(_ key: String, _ value: String) {
+        let on = value == "true"
+        switch key {
+        case "scale": if let v = Double(value), [2, 3, 4, 6].contains(v) { setSize(v) }
+        case "provider": setProvider(value)
+        case "roam": if on != roam { toggleRoam() }
+        case "appAware": if on != appAware { toggleAppAware() }
+        case "emoji": if on != emoji { toggleEmoji() }
+        case "quiet": if on != quiet { toggleQuiet() }
+        case "login": setOpenAtLogin(on)
+        case "visible": if on != panel.isVisible { toggleVisible() }
+        case "follow": if on != follow { toggleFollow() }
+        case "narrate": if on != narrate { toggleNarrate() }
+        case "corner": resetPosition()
+        default:
+            guard App.toggles.contains(key), on != isOn(key) else { return }
+            defaults.set(on, forKey: key)
+            js("mochi.setToggle('\(key)', \(on))")
+        }
+        if sheet.isOpen { sheet.update() }
+    }
+}
+
 func rlog(_ items: Any...) { FileHandle.standardError.write((items.map { "\($0)" }.joined(separator: " ") + "\n").data(using: .utf8)!) }
 
 // MARK: - Render mode: `Mochi --render <dir>` saves every pose as a PNG
@@ -1031,7 +1121,7 @@ final class Renderer: NSObject, WKNavigationDelegate {
 }
 
 let app = NSApplication.shared
-let delegate = App()
+let delegate = MainActor.assumeIsolated { App() }   // top-level code runs on the main thread
 app.delegate = delegate
 app.setActivationPolicy(.accessory)
 app.run()

@@ -13,7 +13,22 @@
   const petEl = document.getElementById('pet');
   const bubbleEl = document.getElementById('bubble');
   const wrapEl = document.getElementById('bubbleWrap');
-  const view = new Critter(petEl, { scale: +(params.get('scale') || ENV.scale || 6) });
+  // Mochi is dressed as the provider you picked (looks.js): Claude's Mochi, Codex's pet, Gemini's or Cursor's critter.
+  let provider = params.get('provider') || ENV.provider || 'claude';
+  const look = () => MINI_LOOKS[provider] || MINI_LOOKS.claude;
+  let view = new Critter(petEl, { scale: +(params.get('scale') || ENV.scale || 6), species: look().species, palette: look().palette });
+  // Swaps the critter for another provider's, keeping its size, pose and the way it faces.
+  function dress(id) {
+    if (!MINI_LOOKS[id] || id === provider) return;
+    provider = id;
+    const was = { scale: view.scale, pose: view.current, facing: view.facing };
+    view.destroy();
+    view = new Critter(petEl, { scale: was.scale, species: look().species, palette: look().palette, pose: was.pose || 'idle' });
+    view.facing = was.facing;
+    applyLayout();
+    placeBubble();
+    view.burst('sparkle', 8);
+  }
 
   // the window: Mochi at the bottom (above a strip kept free for a bubble below it), a bubble above
   const layout = { w: ENV.w || 320, h: ENV.h || 360, below: ENV.below || 0 };
@@ -23,7 +38,9 @@
     st.setProperty('--h', layout.h + 'px');
     st.setProperty('--pet-left', (layout.w - 46 * k) / 2 + 'px');
     st.setProperty('--pet-bottom', layout.below + 'px');
-    st.setProperty('--bubble-above', layout.below + 22 * k + 6 + 'px');
+    // just over the head, whatever species: the top of its head, plus room for a sign over it
+    const head = Critter.headRow ? Critter.headRow(look().species) : 20;
+    st.setProperty('--bubble-above', layout.below + (34 - head + 5) * k + 4 + 'px');
     st.setProperty('--bubble-below', layout.h - layout.below + 10 + 'px');
   }
   applyLayout();
@@ -402,15 +419,19 @@
     }
   }
 
-  // ---------- Claude Code: what it's up to (main.swift hears about it from Claude Code's hooks) ----------
+  // ---------- your agents: what the one Mochi is dressed as is up to (Agents.swift hears it from the CLIs' hooks) ----------
   const CLAUDE_POSES = {
     waiting: 'needsYou', error: 'oops', compacting: 'squish', agents: 'conduct', reading: 'read', writing: 'type',
     searchCode: 'detective', searchWeb: 'binoculars', command: 'terminal', testing: 'clipboard', server: 'terminal',
     committing: 'ship', plan: 'clipboard', tool: 'terminal', thinking: 'think', contextFull: 'sweaty', done: 'cheer', hello: 'wave',
   };
-  const C = { on: ENV.claude !== false, narrate: ENV.narrate !== false, state: '', d: {}, said: '', saidAt: 0 };
+  const C = { on: ENV.follow !== false && ENV.claude !== false, narrate: ENV.narrate !== false, state: '', d: {}, said: '', saidAt: 0 };
+  const who = (d) => (d.agent || 'claude').toLowerCase();
+  // a turn that finished or failed waits for you to look, like a question does
+  Critter.addPose('doneWait', { eyes: 'happy', acc: ['check'], anim: 'slow' });
+  Critter.addPose('failWait', { eyes: 'x', acc: ['sweat'], anim: 'slow' });
   const claudePose = () => (C.on && C.state ? CLAUDE_POSES[C.state] : null);
-  // Claude's news still gets said in a fullscreen app (that's often where you code), just not on a call or in a quiet hour
+  // an agent's news still gets said in a fullscreen app (that's often where you code), just not on a call or in a quiet hour
   const claudeHush = () => quiet() || R.sys.call;
   function claudeSay(text, ms) {
     if (R.scene || claudeHush()) return;
@@ -421,9 +442,9 @@
     const x = d.detail ? ' ' + d.detail : '';
     const where = d.sessions > 1 && d.project ? ` in ${d.project}` : '';
     switch (d.state) {
-      case 'waiting': return d.need === 'question' ? `claude has a question for you${where}` : `claude needs your ok${d.needTool ? ' to use ' + d.needTool : ''}${where}`;
+      case 'waiting': return d.need === 'question' ? `${who(d)} has a question for you${where}` : `${who(d)} needs your ok${d.needTool ? ' to use ' + d.needTool : ''}${where}`;
       case 'error': return `hmm, that didn't work${d.detail ? ': ' + d.detail : ''}`;
-      case 'compacting': return 'claude is tidying up its memory...';
+      case 'compacting': return `${who(d)} is tidying up its memory...`;
       case 'agents': return d.helpers > 1 ? `${d.helpers} helpers on it!` : 'sent a helper off to work';
       case 'reading': return 'reading' + x;
       case 'writing': return (d.tool === 'Write' ? 'writing' : 'editing') + x;
@@ -434,30 +455,36 @@
       case 'server': return 'starting the server';
       case 'command': case 'tool': return d.detail || 'running a command';
       case 'plan': return d.todo ? `updating the plan: ${d.todo[0]} of ${d.todo[1]} done` : 'making a plan';
-      case 'contextFull': return "claude's memory is almost full";
+      case 'contextFull': return `${who(d)}'s memory is almost full`;
       case 'done': return pick(['all done! :check:', 'done! :check: your turn', 'finished! :check:']) + where;
-      case 'hello': return `ooh, claude code${d.project ? ' in ' + d.project : ''}! i'll follow along`;
+      case 'hello': return `ooh, ${who(d)}${d.project ? ' in ' + d.project : ''}! i'll follow along`;
     }
     return '';
   }
+  // Waiting on you, or a turn that finished or failed while you were elsewhere: hold it until you look.
+  // "show me" jumps to that session's window; either button clears its alert.
+  const HELD = { waiting: 'needsYou', done: 'doneWait', error: 'failWait' };
+  const held = (d) => d.state === 'waiting' || ((d.state === 'done' || d.state === 'error') && !!d.alert);
   function onClaude(d) {
     const t = (R.now = Date.now());
-    const was = C.state;
+    const was = C.d;
     C.d = d;
     C.state = d.state || '';
     if (!C.on) return;
     const sc = R.scene;
-    if (C.state === 'waiting' && was !== 'waiting') {
+    const key = (x) => (held(x) ? x.state + '|' + x.id : '');
+    if (held(d) && key(d) !== key(was)) {
       if (sc && sc.kind !== 'claude') endScene();
       if (!claudeHush()) {
-        play({ pose: 'needsYou', say: claudeLine(d), dur: 30 * 60, kind: 'claude', buttons: [[':hand: show me', 'go'], ['ok', 'ok']],
-          onChoose: (c) => { if (c === 'go') post({ type: 'claudeFocus' }); } });
+        if (d.state === 'done' && was.state !== 'done') view.burst('sparkle', 6);
+        play({ pose: HELD[d.state], say: claudeLine(d), dur: 30 * 60, kind: 'claude', buttons: [[':hand: show me', 'go'], ['ok', 'ok']],
+          onChoose: (c) => post({ type: c === 'go' ? 'agentFocus' : 'agentAck' }) });
       }
-    } else if (was === 'waiting' && C.state !== 'waiting' && sc && sc.kind === 'claude') {
+    } else if (!held(d) && sc && sc.kind === 'claude') {
       R.scene = null;
       bubble.hide();
     }
-    if (C.state && C.state !== 'waiting') {
+    if (C.state && !held(d)) {
       const line = claudeLine(d), key = C.state + '|' + (d.detail || '');
       // say when it's done; narrate the rest only if you want that, and never more than every few seconds
       const worth = (C.state === 'done' && want('claudeDone')) || (C.narrate && C.state !== 'thinking' && (['error', 'hello'].includes(C.state) || t - C.saidAt > 7 * SEC));
@@ -526,7 +553,7 @@
   function roamLevel(t, s) {
     if (!s || R.dragging || hush()) return 0;
     if (R.scene && !bubbleEl.hidden) return 0;            // mid-sentence
-    if (C.on && C.state === 'waiting') return 0;          // Claude needs you: stay where you can see it
+    if (C.on && held(C.d)) return 0;                      // an agent needs you: stay where you can see it
     if (s.idle >= CFG.sleepIdle) return 0;                // napping
     if (R.ti > 0.22 || (R.flowSince && t - R.flowSince > 2 * MIN)) return 0; // you're typing: stay put, keep you company
     return s.idle >= CFG.awayIdle ? 2 : 1;                // you stepped away: go play
@@ -659,7 +686,8 @@
     stroll: 'going for a stroll', crouch: 'about to jump', jump: 'jumping', fall: 'falling!', land: 'landing', dizzy: 'dizzy',
     shh: "being quiet (you're on a call)", popcorn: 'watching with you', jam: 'vibing to your music', duck: 'rubber-duck debugging',
     lowbatt: 'low on battery', zap: 'charging up', shades: 'too cool',
-    think: 'thinking along with Claude', needsYou: 'waiting for you (Claude needs you)', terminal: 'running commands',
+    think: 'thinking along with your agent', needsYou: 'waiting for you (your agent needs you)', terminal: 'running commands',
+    doneWait: 'your agent finished', failWait: 'your agent hit an error',
     clipboard: 'checking things off', binoculars: 'searching the web', ship: 'shipping it', conduct: 'directing helpers',
     squish: 'squishing its memory', oops: 'oops',
   };
@@ -756,8 +784,9 @@
       setTimeout(restorePose, 3600);
     },
     sys: onSys,
-    claude: onClaude,
-    setClaude(on, narrate) {
+    agent: onClaude,
+    setProvider: dress,
+    setFollow(on, narrate) {
       C.on = !!on;
       C.narrate = !!narrate;
       if (!C.on && R.scene && R.scene.kind === 'claude') { R.scene = null; bubble.hide(); }
@@ -765,16 +794,18 @@
       ambient(Date.now(), R.last || IDLE);
       updateRoam();
     },
-    // first run with Claude Code around: offer to follow along
-    claudeHint() {
+    // first run with the agent Mochi is dressed as around: offer to follow along
+    connectHint() {
       R.now = Date.now();
-      ask('wave', "psst! you use claude code. want me to act out what it's doing?", [['yes please', 'yes'], ['not now', 'no']],
-        (c) => { if (c === 'yes') post({ type: 'claudeConnect' }); });
+      const name = (MINI_LOOKS[provider] || {}).name || 'your agent';
+      ask('wave', `psst! you use ${name.toLowerCase()}. want me to act out what it's doing?`, [['yes please', 'yes'], ['not now', 'no']],
+        (c) => { if (c === 'yes') post({ type: 'agentConnect' }); });
     },
-    claudeConnected(ok, why) {
+    agentConnected(ok, why) {
       R.now = Date.now();
-      if (ok) say('cheer', "connected! restart your claude code sessions and i'll follow along :sparkle:", 8, 'sparkle');
-      else say('sweaty', `couldn't connect to claude code: ${why}`, 8);
+      const name = ((MINI_LOOKS[provider] || {}).name || 'your agent').toLowerCase();
+      if (ok) say('cheer', `connected! restart your ${name} sessions and i'll follow along :sparkle:`, 8, 'sparkle');
+      else say('sweaty', `couldn't connect to ${name}: ${why}`, 8);
     },
     // the panel opened or closed: hold up a gear while it's open, and keep the bubble out of its way
     menu(open) {
