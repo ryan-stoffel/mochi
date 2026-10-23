@@ -464,10 +464,9 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, WKNavi
         shell.providerChanged()
     }
 
-    /// Opening the panel with numbers more than a minute old asks for new ones.
+    /// Opening the panel asks for new numbers (`UsageService.freshen` keeps it to once a minute).
     func freshenUsage() {
-        guard (usage.lastUpdated(provider).map { Date().timeIntervalSince($0) > 60 } ?? true) else { return }
-        Task { await usage.refreshProvider(provider) }
+        Task { await usage.freshen(provider) }
     }
 
     // MARK: getting around

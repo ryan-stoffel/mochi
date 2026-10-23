@@ -26,7 +26,7 @@
   /* tabs: one framed strip, like the size picker; the open one is filled in */
   nav { display: flex; margin: 12px 2px 4px; background: #f3e9dd;
     box-shadow: 0 -2px 0 0 var(--ink), 0 2px 0 0 var(--ink), -2px 0 0 0 var(--ink), 2px 0 0 0 var(--ink), 0 4px 0 0 var(--shade); }
-  nav button { flex: 1 1 auto; display: flex; align-items: center; justify-content: center; gap: 4px; height: 26px; padding: 0 7px 2px; font-size: 16px; white-space: nowrap; }
+  nav button { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 4px; height: 26px; padding: 0 7px 2px; font-size: 16px; white-space: nowrap; }
   nav button + button { box-shadow: -2px 0 0 0 var(--line); }
   nav button:hover { background: #ece0d2; }
   nav button.on { background: var(--orange); color: #fff; }

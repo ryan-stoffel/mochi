@@ -32,6 +32,8 @@ public final class UsageService: ObservableObject {
     private var cliAt: [String: Date] = [:]
     /// Rate-limited providers, and when to ask again.
     private var backoff: [String: Date] = [:]
+    /// How many times in a row each was told to slow down (see `backoff(after:)`).
+    private var strikes: [String: Int] = [:]
     /// When each provider was last asked, so each keeps to its own pace (`pollEvery`).
     private var checkedAt: [String: Date] = [:]
     private var inFlight: Set<String> = []
@@ -45,7 +47,11 @@ public final class UsageService: ObservableObject {
     /// it's asked least; while you use Claude Code its status line keeps the numbers fresh anyway.
     static func pollEvery(_ id: String) -> TimeInterval { id == "claude" ? 5 * 60 : pollInterval }
     static let cliInterval: TimeInterval = 15 * 60
-    static let backoffInterval: TimeInterval = 10 * 60
+    nonisolated static let backoffInterval: TimeInterval = 10 * 60
+
+    /// How long to wait after the `n`th "asked too often" in a row: 90 seconds, doubling to 10 minutes. Claude's
+    /// endpoint often answers again a minute or two later, and something else may have used up its allowance.
+    nonisolated static func backoff(after n: Int) -> TimeInterval { min(backoffInterval, 90 * pow(2, Double(max(n, 1) - 1))) }
 
     public init() {
         loadCache()
@@ -79,7 +85,8 @@ public final class UsageService: ObservableObject {
         await withTaskGroup(of: Void.self) { group in
             for id in Provider.ids where Settings.shared.isEnabled(id) && providers[id]?.state != .notInstalled {
                 if !manual, let until = backoff[id], until > now { continue }
-                if !manual, let at = checkedAt[id], now.timeIntervalSince(at) < Self.pollEvery(id) - 5 { continue }
+                // a rate-limited provider goes as soon as its backoff is up, not a whole poll interval later
+                if !manual, backoff[id] == nil, let at = checkedAt[id], now.timeIntervalSince(at) < Self.pollEvery(id) - 5 { continue }
                 let cliDue = cliAt[id].map { now.timeIntervalSince($0) > Self.cliInterval } ?? true
                 let allowCLI = manual || (!signedOut.contains(id) && cliDue)
                 group.addTask { await self.refreshOne(id, allowCLI: allowCLI) }
@@ -93,6 +100,15 @@ public final class UsageService: ObservableObject {
         applyDetection(await Self.run { Self.detect() })
         await refreshOne(id, allowCLI: true)
         lastRefreshed = Date()
+    }
+
+    /// Someone's looking (the dropdown or panel opened, a tab picked): asks one provider's API again if it hasn't
+    /// been asked in the last minute and isn't backing off. No CLI screens: those wait for the poll.
+    public func freshen(_ id: String) async {
+        let now = Date()
+        guard Settings.shared.isEnabled(id), backoff[id].map({ $0 <= now }) ?? true,
+              checkedAt[id].map({ now.timeIntervalSince($0) > 60 }) ?? true else { return }
+        await refreshOne(id, allowCLI: false)
     }
 
     private func refreshOne(_ id: String, allowCLI: Bool) async {
@@ -152,7 +168,9 @@ public final class UsageService: ObservableObject {
             case .offline: claude.error = "You're offline."; claude.errorType = "offline"
             case .signedOut(let m): claude.error = m ?? "Not logged in. Run claude in a terminal to log in."; claude.errorType = "auth"
             // being told to slow down isn't a problem worth a banner while there are numbers: they just age
-            case .rateLimited: if !hasData { claude.error = "Asked too often; trying again in a few minutes."; claude.errorType = nil }
+            case .rateLimited:
+                claude.error = hasData ? nil : "Asked too often; trying again in a few minutes."
+                claude.errorType = nil
             case .failed(let m): claude.error = m; claude.errorType = nil
             case .data: break
             }
@@ -171,18 +189,20 @@ public final class UsageService: ObservableObject {
         func keep(_ message: String) -> ProviderStatus {
             hasData ? ProviderStatus(state: .loggedIn, message: message) : ProviderStatus(state: .error(message), message: message)
         }
+        if case .rateLimited = r {} else { backoff[id] = nil; strikes[id] = nil }
         switch r {
         case .data:
             providers[id] = ProviderStatus(state: .loggedIn)
             signedOut.remove(id)
-            backoff[id] = nil
         case .signedOut(let message):
             providers[id] = ProviderStatus(state: .installed, message: message)
             signedOut.insert(id)
         case .offline:
             providers[id] = keep("You're offline; showing the last numbers.")
         case .rateLimited:
-            backoff[id] = Date().addingTimeInterval(Self.backoffInterval)
+            let n = (strikes[id] ?? 0) + 1
+            strikes[id] = n
+            backoff[id] = Date().addingTimeInterval(Self.backoff(after: n))
             providers[id] = hasData ? ProviderStatus(state: .loggedIn) : keep("Asked too often; trying again in a few minutes.")
         case .failed(let message):
             providers[id] = keep(message)

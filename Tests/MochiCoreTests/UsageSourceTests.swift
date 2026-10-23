@@ -117,6 +117,18 @@ final class UsageSourceTests: XCTestCase {
         XCTAssertNil(u.error)
     }
 
+    // MARK: - Timing
+
+    /// Claude's week ends at 18:59:59.42 UTC; Claude shows that as noon, and so does Mochi.
+    func testResetTimesRoundToTheMinute() throws {
+        let d = try XCTUnwrap(Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 25, hour: 11, minute: 59, second: 59)))
+        XCTAssertEqual(UsageDates.resetText(d.addingTimeInterval(0.4), now: d.addingTimeInterval(-3 * 86400)), "Oct 25, 12pm")
+    }
+
+    func testRateLimitBackoffDoublesToTenMinutes() {
+        XCTAssertEqual((1...5).map { UsageService.backoff(after: $0) }, [90, 180, 360, 600, 600])
+    }
+
     // MARK: - Fallback order
 
     func testSourcesAreTriedInOrder() {

@@ -131,6 +131,8 @@ enum UsageDates {
     /// How the dropdown says when a window starts over, matching what the CLIs print: "11:10pm" today,
     /// "Oct 25, 12pm" further out.
     static func resetText(_ date: Date, now: Date = Date()) -> String {
+        // to the nearest minute: a reset at 11:59:59.4 is noon
+        let date = Date(timeIntervalSinceReferenceDate: (date.timeIntervalSinceReferenceDate / 60).rounded() * 60)
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         let minutes = Calendar.current.component(.minute, from: date)

@@ -20,7 +20,11 @@ final class UsageMenu {
     }
 
     /// Opens with its tail on `x`, under `feet` (or over `top` if there's room there). Again closes it.
-    func show(x: CGFloat, top: CGFloat, feet: CGFloat) { panel.show(x: x, top: top, feet: feet) }
+    /// Opens it, asking the shown provider for new numbers while it's up.
+    func show(x: CGFloat, top: CGFloat, feet: CGFloat) {
+        panel.show(x: x, top: top, feet: feet)
+        Task { await usage.freshen(Self.selected.id) }
+    }
 
     /// Loads the page ahead of the first click, so the dropdown opens at once.
     func warm() { _ = panel }
@@ -49,6 +53,7 @@ final class UsageMenu {
             guard let arg, Provider.byID(arg) != nil else { return }
             Settings.shared.selectedProvider = arg
             onSelect()
+            Task { await usage.freshen(arg) }
         case "refresh":
             Task { await usage.refresh() }
         case "retry":
